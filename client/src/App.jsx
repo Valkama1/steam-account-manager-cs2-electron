@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "./cooldown.js";
 import styles from "./App.module.css";
 
@@ -27,6 +28,7 @@ const OLED_DARK = {
 };
 
 const THEME_PRESETS = {
+  auto:  { label: "System Auto",      defaults: null           },
   dark:  { label: "Catppuccin Mocha", defaults: CATPPUCCIN_MOCHA },
   light: { label: "Catppuccin Latte", defaults: CATPPUCCIN_LATTE },
   oled:  { label: "OLED Dark",        defaults: OLED_DARK },
@@ -41,6 +43,13 @@ const COLOR_LABELS = [
   ["red", "Red"],
 ];
 
+const AUTO_REFRESH_OPTIONS = [
+  { value: 0,    label: "Off"     },
+  { value: 5,    label: "5 min"   },
+  { value: 15,   label: "15 min"  },
+  { value: 30,   label: "30 min"  },
+];
+
 const DEFAULT_SETTINGS = {
   showPrimeBadge: true,
   showPremierBadge: true,
@@ -48,11 +57,14 @@ const DEFAULT_SETTINGS = {
   showSteamId: true,
   showLoginName: true,
   showPlaytime: true,
+  sidebarCollapsed: false,
   cardLayout: "grid",
   sortField: "createdAt",
   sortDir: "desc",
+  customOrder: [],
   themeMode: "dark",
   colors: { dark: { ...CATPPUCCIN_MOCHA }, light: { ...CATPPUCCIN_LATTE }, oled: { ...OLED_DARK } },
+  autoRefreshInterval: 0,
 };
 
 function readSettings() {
@@ -64,9 +76,11 @@ function readSettings() {
       ...DEFAULT_SETTINGS,
       ...parsed,
       colors: Object.fromEntries(
-        Object.entries(THEME_PRESETS).map(([key, { defaults }]) => [
-          key, { ...defaults, ...(parsed.colors?.[key] || {}) },
-        ])
+        Object.entries(THEME_PRESETS)
+          .filter(([, p]) => p.defaults)
+          .map(([key, { defaults }]) => [
+            key, { ...defaults, ...(parsed.colors?.[key] || {}) },
+          ])
       ),
     };
   } catch { return DEFAULT_SETTINGS; }
@@ -89,6 +103,7 @@ const SORT_OPTIONS = [
   { value: "cs2Hours",      label: "Playtime"        },
   { value: "premierRating", label: "Premier Rating"  },
   { value: "steamId64",     label: "Steam ID"        },
+  { value: "custom",        label: "Custom Order"    },
 ];
 
 function sortAccounts(list, field, dir) {
@@ -132,6 +147,31 @@ export default function App() {
   const [activeFilters, setActiveFilters] = useState(() => readFilterCookie());
   const [settings, setSettings]           = useState(() => readSettings());
   const [settingsOpen, setSettingsOpen]   = useState(false);
+  const [draggingId, setDraggingId]       = useState(null);
+  const [dragOverId, setDragOverId]       = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [collapsedSections, setCollapsedSections] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("steamgr_collapsed") || "{}"); }
+    catch { return {}; }
+  });
+  const [focusedIdx, setFocusedIdx] = useState(-1);
+  const searchRef   = useRef(null);
+  const focusedIdxRef = useRef(-1);
+  const allVisibleRef = useRef([]);
+  useEffect(() => { focusedIdxRef.current = focusedIdx; }, [focusedIdx]);
+
+  function toggleSection(title) {
+    setCollapsedSections(prev => {
+      const next = { ...prev, [title]: !prev[title] };
+      localStorage.setItem("steamgr_collapsed", JSON.stringify(next));
+      return next;
+    });
+  }
+  const addToast = useCallback((message, type = "error") => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
 
   const fetchAccounts = useCallback(async () => {
     try {
@@ -232,6 +272,37 @@ export default function App() {
     await fetchAccounts();
   }
 
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
+  async function handleRefreshAll() {
+    const withId = accounts.filter(a => a.steamId64);
+    if (!withId.length) return;
+    setRefreshingAll(true);
+    for (const acc of withId) {
+      await fetch(`${API}/${acc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileUrl: `https://steamcommunity.com/profiles/${acc.steamId64}` }),
+      });
+    }
+    await fetchAccounts();
+    setRefreshingAll(false);
+    setLastRefreshed(new Date());
+    addToast(`Refreshed ${withId.length} accounts`, "success");
+  }
+
+  // ── auto-refresh ──
+  const refreshingAllRef = useRef(false);
+  useEffect(() => { refreshingAllRef.current = refreshingAll; }, [refreshingAll]);
+  useEffect(() => {
+    if (!settings.autoRefreshInterval) return;
+    const ms = settings.autoRefreshInterval * 60 * 1000;
+    const id = setInterval(() => {
+      if (!refreshingAllRef.current) handleRefreshAll();
+    }, ms);
+    return () => clearInterval(id);
+  }, [settings.autoRefreshInterval]);
+
   // ── toggle weekly drop ──
   async function handleToggleDrop(id) {
     const acc = accounts.find(a => a.id === id);
@@ -289,8 +360,37 @@ export default function App() {
     const r = await fetch(`/api/switch/${id}`, { method: "POST" });
     const data = await r.json();
     if (!r.ok) {
-      alert(`Switch failed: ${data.error}`);
+      addToast(`Switch failed: ${data.error}`);
     }
+  }
+
+  async function handleToggleFavorite(id) {
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return;
+    const r = await fetch(`/api/accounts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favorite: !acc.favorite }),
+    });
+    if (r.ok) {
+      const updated = await r.json();
+      setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+    }
+  }
+
+  function handleReorder(draggedId, targetId) {
+    if (draggedId === targetId) return;
+    setSettings(prev => {
+      const allIds = accounts.map(a => a.id);
+      const order = [...(prev.customOrder || [])];
+      for (const id of allIds) { if (!order.includes(id)) order.push(id); }
+      const from = order.indexOf(draggedId);
+      const to   = order.indexOf(targetId);
+      if (from === -1 || to === -1) return prev;
+      order.splice(from, 1);
+      order.splice(to, 0, draggedId);
+      return { ...prev, customOrder: order };
+    });
   }
 
   const searched = useMemo(() => {
@@ -304,22 +404,37 @@ export default function App() {
     );
   }, [accounts, search]);
 
-  const { banned, onCooldown, ok } = useMemo(() => {
-    const banned    = searched.filter(a => a.vacBanned || a.gameBans > 0);
-    const bannedIds = new Set(banned.map(a => a.id));
+  const { favorites, banned, onCooldown, ok } = useMemo(() => {
+    const favorites   = searched.filter(a => a.favorite);
+    const favIds      = new Set(favorites.map(a => a.id));
+    const nonFav      = searched.filter(a => !favIds.has(a.id));
+    const banned      = nonFav.filter(a => a.vacBanned || a.gameBans > 0);
+    const bannedIds   = new Set(banned.map(a => a.id));
     return {
+      favorites,
       banned,
-      onCooldown: searched.filter(a => !bannedIds.has(a.id) && a.expires && !isExpired(a.expires)),
-      ok:         searched.filter(a => !bannedIds.has(a.id) && (!a.expires || isExpired(a.expires))),
+      onCooldown: nonFav.filter(a => !bannedIds.has(a.id) && a.expires && !isExpired(a.expires)),
+      ok:         nonFav.filter(a => !bannedIds.has(a.id) && (!a.expires || isExpired(a.expires))),
     };
   }, [searched]);
 
   // ── settings persistence + theme apply ───────────────────────────────────────
   useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
   useEffect(() => {
-    const colors = settings.colors[settings.themeMode];
-    const root = document.documentElement;
-    Object.entries(colors).forEach(([k, v]) => root.style.setProperty(`--${k}`, v));
+    function applyColors() {
+      const colors = settings.themeMode === "auto"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? CATPPUCCIN_MOCHA : CATPPUCCIN_LATTE)
+        : settings.colors[settings.themeMode];
+      if (!colors) return;
+      const root = document.documentElement;
+      Object.entries(colors).forEach(([k, v]) => root.style.setProperty(`--${k}`, v));
+    }
+    applyColors();
+    if (settings.themeMode === "auto") {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener("change", applyColors);
+      return () => mq.removeEventListener("change", applyColors);
+    }
   }, [settings.themeMode, settings.colors]);
   function updateSetting(key, value) { setSettings(prev => ({ ...prev, [key]: value })); }
 
@@ -337,7 +452,7 @@ export default function App() {
 
 
 
-  const { visibleOk, visibleCooldown, visibleBanned } = useMemo(() => {
+  const { visibleFavorites, visibleOk, visibleCooldown, visibleBanned } = useMemo(() => {
     const currentWeek      = getCurrentWeekStart();
     const hasStatusInclude = ["ok", "cooldown", "banned"].some(f => activeFilters[f] === "include");
     function sectionVisible(key) {
@@ -365,38 +480,164 @@ export default function App() {
         return true;
       });
     }
-    const sort = list => sortAccounts(list, settings.sortField, settings.sortDir);
-    return {
-      visibleOk:       sectionVisible("ok")      ? sort(applyFilters(ok))        : [],
-      visibleCooldown: sectionVisible("cooldown") ? sort(applyFilters(onCooldown)): [],
-      visibleBanned:   sectionVisible("banned")   ? sort(applyFilters(banned))    : [],
+    const sort = list => {
+      if (settings.sortField === "custom") {
+        const allIds = accounts.map(a => a.id);
+        const order = [...(settings.customOrder || [])];
+        for (const id of allIds) if (!order.includes(id)) order.push(id);
+        return [...list].sort((a, b) => {
+          const ai = order.indexOf(a.id);
+          const bi = order.indexOf(b.id);
+          return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+        });
+      }
+      return sortAccounts(list, settings.sortField, settings.sortDir);
     };
-  }, [ok, onCooldown, banned, activeFilters, settings.dropEligibleOnly, settings.sortField, settings.sortDir]);
+    return {
+      visibleFavorites: sort(favorites),
+      visibleOk:        sectionVisible("ok")      ? sort(applyFilters(ok))        : [],
+      visibleCooldown:  sectionVisible("cooldown") ? sort(applyFilters(onCooldown)): [],
+      visibleBanned:    sectionVisible("banned")   ? sort(applyFilters(banned))    : [],
+    };
+  }, [ok, onCooldown, banned, favorites, activeFilters, settings.dropEligibleOnly, settings.sortField, settings.sortDir, settings.customOrder, accounts]);
+
+  const allVisible = useMemo(() => {
+    const secs = [
+      { key: "Favorites",   list: visibleFavorites },
+      { key: "Available",   list: visibleOk        },
+      { key: "On Cooldown", list: visibleCooldown  },
+      { key: "Banned",      list: visibleBanned    },
+    ];
+    return secs
+      .filter(s => !collapsedSections[s.key])
+      .flatMap(s => s.list);
+  }, [visibleFavorites, visibleOk, visibleCooldown, visibleBanned, collapsedSections]);
+
+  useEffect(() => { allVisibleRef.current = allVisible; }, [allVisible]);
+  useEffect(() => { setFocusedIdx(-1); }, [search, accounts.length]);
+
+  function navigateSpatial(dir) {
+    const all = allVisibleRef.current;
+    if (!all.length) return;
+
+    // If nothing focused yet, start at the first card
+    if (focusedIdxRef.current < 0) { setFocusedIdx(0); return; }
+
+    const focusedAcc = all[focusedIdxRef.current];
+    const focusedEl  = focusedAcc
+      ? document.querySelector(`[data-account-id="${focusedAcc.id}"]`)
+      : null;
+    if (!focusedEl) { setFocusedIdx(0); return; }
+
+    const fr = focusedEl.getBoundingClientRect();
+    const fcx = fr.left + fr.width  / 2;
+    const fcy = fr.top  + fr.height / 2;
+
+    let bestId = null, bestDist = Infinity;
+
+    for (const el of document.querySelectorAll("[data-account-id]")) {
+      if (el === focusedEl) continue;
+      const r   = el.getBoundingClientRect();
+      const cx  = r.left + r.width  / 2;
+      const cy  = r.top  + r.height / 2;
+      const dx  = cx - fcx, dy = cy - fcy;
+
+      // Must be in the right direction with a small threshold to ignore same-row/col noise
+      const THRESH = 8;
+      let valid = false, dist = 0;
+      if (dir === "right") { valid = dx >  THRESH; dist = Math.hypot(dx, dy * 3); }
+      if (dir === "left")  { valid = dx < -THRESH; dist = Math.hypot(dx, dy * 3); }
+      if (dir === "down")  { valid = dy >  THRESH; dist = Math.hypot(dy, dx * 3); }
+      if (dir === "up")    { valid = dy < -THRESH; dist = Math.hypot(dy, dx * 3); }
+
+      if (valid && dist < bestDist) { bestDist = dist; bestId = el.getAttribute("data-account-id"); }
+    }
+
+    if (bestId) {
+      const idx = all.findIndex(a => a.id === bestId);
+      if (idx >= 0) setFocusedIdx(idx);
+    }
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const inInput = tag === "input" || tag === "textarea" || tag === "select";
+
+      if (e.key === "/" && !inInput) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (inInput) return;
+
+      if (e.key === "Escape") {
+        setFocusedIdx(-1);
+        searchRef.current?.blur();
+        return;
+      }
+      const dirMap = { ArrowRight: "right", ArrowLeft: "left", ArrowDown: "down", ArrowUp: "up", l: "right", h: "left", j: "down", k: "up" };
+      if (dirMap[e.key]) {
+        e.preventDefault();
+        navigateSpatial(dirMap[e.key]);
+        return;
+      }
+      if (e.key === "Enter") {
+        const acc = allVisibleRef.current[focusedIdxRef.current];
+        if (acc) handleSwitch(acc.id);
+        return;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (focusedIdx < 0) return;
+    const acc = allVisible[focusedIdx];
+    if (!acc) return;
+    document.querySelector(`[data-account-id="${acc.id}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [focusedIdx]);
 
   return (
     <div className={styles.layout}>
       {/* ── sidebar ── */}
-      <aside className={styles.sidebar}>
+      <aside className={`${styles.sidebar} ${settings.sidebarCollapsed ? styles.sidebarCollapsed : ""}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.logo}>
             <span className={styles.logoMark}>▣</span>
-            <span className={styles.logoText}>STEAM<br /><em>MANAGER</em></span>
+            {!settings.sidebarCollapsed && <span className={styles.logoText}>STEAM<br /><em>MANAGER</em></span>}
           </div>
-          <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+          {!settings.sidebarCollapsed && <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>}
         </div>
 
-        <div className={styles.stats}>
-          <Stat label="Total" value={accounts.length} />
-          <Stat label="OK" value={ok.length} color="var(--green)" />
-          <Stat label="Cooldown" value={onCooldown.length} color="var(--yellow)" />
-        </div>
-
-        <DropCountdown />
+        <DropCountdown collapsed={settings.sidebarCollapsed} />
 
         <button className={styles.addBtn} onClick={() => setModal({ mode: "add" })}>
-          + Add Account
+          {settings.sidebarCollapsed ? "+" : "+ Add Account"}
         </button>
 
+        <button
+          className={styles.refreshAllBtn}
+          onClick={handleRefreshAll}
+          disabled={refreshingAll}
+          title={lastRefreshed ? `Last refreshed: ${lastRefreshed.toLocaleTimeString()}` : "Refresh all Steam stats"}
+        >
+          {refreshingAll
+            ? (settings.sidebarCollapsed ? "…" : "Refreshing…")
+            : (settings.sidebarCollapsed ? "↺" : "↺  Refresh All")}
+        </button>
+
+        {settings.sidebarCollapsed && (
+          <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+        )}
+
+        <button
+          className={styles.collapseBtn}
+          onClick={() => updateSetting("sidebarCollapsed", !settings.sidebarCollapsed)}
+          title={settings.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >{settings.sidebarCollapsed ? "›" : "‹"}</button>
       </aside>
 
       {/* ── main ── */}
@@ -404,12 +645,6 @@ export default function App() {
         <header className={styles.header}>
           <h1>Accounts</h1>
           {error && <span className={styles.serverErr}>{error}</span>}
-          <input
-            className={styles.searchInput}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, alias, or Steam ID…"
-          />
         </header>
 
         {loading ? (
@@ -418,14 +653,40 @@ export default function App() {
           <p className={styles.empty}>No accounts yet — click "+ Add Account" to get started.</p>
         ) : (
           <>
+            <div className={styles.toolbar}>
+              <input
+                ref={searchRef}
+                className={styles.searchInput}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name, alias, or Steam ID…  ( / )"
+                onKeyDown={e => e.key === "Escape" && (e.target.blur(), setSearch(""))}
+              />
+              <div className={styles.sortControls}>
+                <select
+                  className={styles.sortSelect}
+                  value={settings.sortField}
+                  onChange={e => updateSetting("sortField", e.target.value)}
+                >
+                  {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {settings.sortField !== "custom" && (
+                  <button
+                    className={styles.sortDirBtn}
+                    onClick={() => updateSetting("sortDir", settings.sortDir === "asc" ? "desc" : "asc")}
+                    title={settings.sortDir === "asc" ? "Ascending" : "Descending"}
+                  >{settings.sortDir === "asc" ? "↑" : "↓"}</button>
+                )}
+              </div>
+            </div>
             <div className={styles.filterBar}>
               {[
-                { key: "ok",           label: "Available",       color: "var(--green)"  },
-                { key: "cooldown",     label: "Cooldown", color: "var(--yellow)" },
-                { key: "banned",       label: "Banned",   color: "var(--red)"    },
-                { key: "prime",        label: "Prime",    color: "#e8b53a"       },
-                { key: "premierReady", label: "Premier",  color: "#4db6e8"       },
-                { key: "drop",         label: "Drop",     color: "#6dbf8a"       },
+                { key: "ok",           label: "Available", color: "var(--green)"  },
+                { key: "cooldown",     label: "Cooldown",  color: "var(--yellow)" },
+                { key: "banned",       label: "Banned",    color: "var(--red)"    },
+                { key: "prime",        label: "Prime",     color: "#e8b53a"       },
+                { key: "premierReady", label: "Premier",   color: "#4db6e8"       },
+                { key: "drop",         label: "Drop",      color: "#6dbf8a"       },
               ].map(({ key, label, color }) => {
                 const state = activeFilters[key];
                 return (
@@ -438,85 +699,66 @@ export default function App() {
                   >{label}</button>
                 );
               })}
-              <div className={styles.sortControls}>
-                <select
-                  className={styles.sortSelect}
-                  value={settings.sortField}
-                  onChange={e => updateSetting("sortField", e.target.value)}
-                >
-                  {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <button
-                  className={styles.sortDirBtn}
-                  onClick={() => updateSetting("sortDir", settings.sortDir === "asc" ? "desc" : "asc")}
-                  title={settings.sortDir === "asc" ? "Ascending" : "Descending"}
-                >{settings.sortDir === "asc" ? "↑" : "↓"}</button>
-              </div>
             </div>
 
-            {visibleOk.length > 0 && (
-              <Section title="Available" accent="var(--green)" layout={settings.cardLayout}>
-                {visibleOk.map(a =>
-                  <AccountCard key={a.id} acc={a} layout={settings.cardLayout}
-                    active={activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase()}
-                    showSteamId={settings.showSteamId}
-                    showLoginName={settings.showLoginName}
-                    showPlaytime={settings.showPlaytime}
-                    showPrimeBadge={settings.showPrimeBadge}
-                    showPremierBadge={settings.showPremierBadge}
-                    onEdit={() => setModal({ mode: "edit", acc: a })}
-                    onRefresh={handleRefresh}
-                    onSwitch={handleSwitch}
-                    onHistory={() => setHistoryAcc(a)}
-                    onToggleDrop={handleToggleDrop}
-                    onDropHistory={() => setDropHistoryAcc(a)}
-                    onSetCooldown={handleSetCooldown}
-                    onClearCooldown={handleClearCooldown} />
+            {(() => {
+              const focusedId = allVisible[focusedIdx]?.id;
+              const cardProps = (a, extra = {}) => ({
+                key: a.id,
+                acc: a,
+                layout: settings.cardLayout,
+                active: activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase(),
+                isFocused: focusedId === a.id,
+                showSteamId: settings.showSteamId,
+                showLoginName: settings.showLoginName,
+                showPlaytime: settings.showPlaytime,
+                showPrimeBadge: settings.showPrimeBadge,
+                showPremierBadge: settings.showPremierBadge,
+                onEdit: () => setModal({ mode: "edit", acc: a }),
+                onRefresh: handleRefresh,
+                onSwitch: handleSwitch,
+                onHistory: () => setHistoryAcc(a),
+                onToggleDrop: handleToggleDrop,
+                onDropHistory: () => setDropHistoryAcc(a),
+                onSetCooldown: handleSetCooldown,
+                onClearCooldown: handleClearCooldown,
+                onToggleFavorite: handleToggleFavorite,
+                draggable: settings.sortField === "custom",
+                onReorder: handleReorder,
+                onDragStarted: setDraggingId,
+                onDragEntered: setDragOverId,
+                onDragEnded: () => { setDraggingId(null); setDragOverId(null); },
+                isDragging: draggingId === a.id,
+                isDropTarget: dragOverId === a.id && draggingId !== a.id,
+                ...extra,
+              });
+              return (<>
+                {visibleFavorites.length > 0 && (
+                  <Section title="Favorites" accent="#f9e2af" layout={settings.cardLayout} count={visibleFavorites.length}
+                    collapsed={!!collapsedSections["Favorites"]} onToggle={() => toggleSection("Favorites")}>
+                    {visibleFavorites.map(a => <AccountCard {...cardProps(a)} />)}
+                  </Section>
                 )}
-              </Section>
-            )}
-            {visibleCooldown.length > 0 && (
-              <Section title="On Cooldown" accent="var(--yellow)" layout={settings.cardLayout}>
-                {visibleCooldown.map(a =>
-                  <AccountCard key={a.id} acc={a} layout={settings.cardLayout}
-                    active={activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase()}
-                    showSteamId={settings.showSteamId}
-                    showLoginName={settings.showLoginName}
-                    showPlaytime={settings.showPlaytime}
-                    showPrimeBadge={settings.showPrimeBadge}
-                    showPremierBadge={settings.showPremierBadge}
-                    onEdit={() => setModal({ mode: "edit", acc: a })}
-                    onRefresh={handleRefresh}
-                    onSwitch={handleSwitch}
-                    onHistory={() => setHistoryAcc(a)}
-                    onToggleDrop={handleToggleDrop}
-                    onDropHistory={() => setDropHistoryAcc(a)}
-                    onSetCooldown={handleSetCooldown}
-                    onClearCooldown={handleClearCooldown} />
+                {visibleOk.length > 0 && (
+                  <Section title="Available" accent="var(--green)" layout={settings.cardLayout} count={visibleOk.length}
+                    collapsed={!!collapsedSections["Available"]} onToggle={() => toggleSection("Available")}>
+                    {visibleOk.map(a => <AccountCard {...cardProps(a)} />)}
+                  </Section>
                 )}
-              </Section>
-            )}
-            {visibleBanned.length > 0 && (
-              <Section title="Banned" accent="var(--red)" layout={settings.cardLayout}>
-                {visibleBanned.map(a =>
-                  <AccountCard key={a.id} acc={a} banned layout={settings.cardLayout}
-                    active={activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase()}
-                    showSteamId={settings.showSteamId}
-                    showLoginName={settings.showLoginName}
-                    showPlaytime={settings.showPlaytime}
-                    showPrimeBadge={settings.showPrimeBadge}
-                    showPremierBadge={settings.showPremierBadge}
-                    onEdit={() => setModal({ mode: "edit", acc: a })}
-                    onRefresh={handleRefresh}
-                    onSwitch={handleSwitch}
-                    onHistory={() => setHistoryAcc(a)}
-                    onToggleDrop={handleToggleDrop}
-                    onDropHistory={() => setDropHistoryAcc(a)}
-                    onSetCooldown={handleSetCooldown}
-                    onClearCooldown={handleClearCooldown} />
+                {visibleCooldown.length > 0 && (
+                  <Section title="On Cooldown" accent="var(--yellow)" layout={settings.cardLayout} count={visibleCooldown.length}
+                    collapsed={!!collapsedSections["On Cooldown"]} onToggle={() => toggleSection("On Cooldown")}>
+                    {visibleCooldown.map(a => <AccountCard {...cardProps(a)} />)}
+                  </Section>
                 )}
-              </Section>
-            )}
+                {visibleBanned.length > 0 && (
+                  <Section title="Banned" accent="var(--red)" layout={settings.cardLayout} count={visibleBanned.length}
+                    collapsed={!!collapsedSections["Banned"]} onToggle={() => toggleSection("Banned")}>
+                    {visibleBanned.map(a => <AccountCard {...cardProps(a, { banned: true })} />)}
+                  </Section>
+                )}
+              </>);
+            })()}
           </>
         )}
       </main>
@@ -543,6 +785,14 @@ export default function App() {
         <SettingsModal settings={settings} onChange={updateSetting} onClose={() => setSettingsOpen(false)}
           keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey} />
       )}
+      <div className={styles.toastContainer}>
+        {toasts.map(t => (
+          <div key={t.id} className={`${styles.toast} ${t.type === "error" ? styles.toastError : t.type === "success" ? styles.toastSuccess : styles.toastInfo}`}>
+            <span>{t.message}</span>
+            <button className={styles.toastClose} onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}>✕</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -696,30 +946,23 @@ function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDelete }) {
 
 // ── Supporting components ─────────────────────────────────────────────────────
 
-function Section({ title, accent, children, layout }) {
+function Section({ title, accent, children, layout, count, collapsed, onToggle }) {
   return (
     <section style={{ marginBottom: "2rem" }}>
-      <h2 style={{ fontFamily: "var(--mono)", fontSize: "11px", letterSpacing: "0.12em",
-                   color: accent, marginBottom: "10px", textTransform: "uppercase" }}>
-        {title}
-      </h2>
-      <div className={layout === "list" ? styles.cardGridList : styles.cardGrid}>{children}</div>
+      <button className={styles.sectionHeader} onClick={onToggle}>
+        <h2 className={styles.sectionTitle} style={{ color: accent }}>
+          {title}
+          <span className={styles.sectionCount}>({count})</span>
+        </h2>
+        <span className={styles.sectionChevron} style={{ color: accent }}>{collapsed ? "›" : "‹"}</span>
+      </button>
+      {!collapsed && <div className={layout === "list" ? styles.cardGridList : styles.cardGrid}>{children}</div>}
     </section>
   );
 }
 
-function Stat({ label, value, color }) {
-  return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: "26px", fontWeight: 800,
-                    color: color || "var(--text)" }}>{value}</div>
-      <div style={{ fontSize: "10px", color: "var(--dim)",
-                    fontFamily: "var(--mono)", letterSpacing: "0.1em" }}>{label}</div>
-    </div>
-  );
-}
 
-function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, banned, active, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true }) {
+function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, onReorder, onDragStarted, onDragEntered, onDragEnded, isDragging = false, isDropTarget = false }) {
   const expired  = isExpired(acc.expires);
   const hasCd    = acc.expires && !expired;
   const rem      = hasCd ? remainingStr(acc.expires) : null;
@@ -748,6 +991,25 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [ctxPos]);
+
+  const dragProps = draggable ? {
+    draggable: true,
+    onDragStart(e) {
+      e.dataTransfer.setData("text/plain", acc.id);
+      e.dataTransfer.effectAllowed = "move";
+      setTimeout(() => onDragStarted(acc.id), 0);
+    },
+    onDragEnter(e) {
+      if (e.dataTransfer.types.includes("text/plain")) onDragEntered(acc.id);
+    },
+    onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; },
+    onDrop(e) {
+      e.preventDefault();
+      const draggedId = e.dataTransfer.getData("text/plain");
+      if (draggedId && draggedId !== acc.id) onReorder(draggedId, acc.id);
+    },
+    onDragEnd() { onDragEnded(); },
+  } : {};
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -818,7 +1080,9 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
       )}
       {!acc.vacBanned && !acc.gameBans && hasCd && (
         <>
-          <Badge color="var(--yellow)" bg="color-mix(in srgb, var(--yellow) 12%, transparent)">⏳ Cooldown</Badge>
+          <Badge color="var(--yellow)" bg="color-mix(in srgb, var(--yellow) 12%, transparent)"
+            title={acc.expires ? `Lifts ${new Date(acc.expires).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : undefined}
+          >⏳ Cooldown</Badge>
           <span className={styles.remaining}>{rem}</span>
         </>
       )}
@@ -858,12 +1122,15 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
     </div>
   );
 
-  const baseClass = `${styles.card} ${hasCd ? styles.cardCd : ""} ${banned ? styles.cardBanned : ""} ${active ? styles.cardActive : ""}`;
+  const baseClass = `${styles.card} ${hasCd ? styles.cardCd : ""} ${banned ? styles.cardBanned : ""} ${active ? styles.cardActive : ""} ${isFocused ? styles.cardFocused : ""} ${isDragging ? styles.cardDragging : ""} ${isDropTarget ? styles.cardDragOver : ""}`;
 
   if (layout === "list") {
     return (
-      <div className={`${baseClass} ${styles.cardList}`} onContextMenu={handleContextMenu}>
-        {acc.avatar && <img src={acc.avatar} alt="" className={styles.avatar} />}
+      <div className={`${baseClass} ${styles.cardList}`} data-account-id={acc.id} onContextMenu={handleContextMenu} {...dragProps}>
+        {acc.avatar && (acc.steamId64
+          ? <a href={`https://steamcommunity.com/profiles/${acc.steamId64}`} target="_blank" rel="noreferrer"><img src={acc.avatar} alt="" className={styles.avatar} /></a>
+          : <img src={acc.avatar} alt="" className={styles.avatar} />
+        )}
         <div className={styles.cardInfo}>
           {nameEl}
           {showLoginName && (acc.alias || acc.profileName) && (
@@ -912,7 +1179,11 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
             </>
           )}
         </div>
-        <div className={styles.cardHoverHint}>right-click</div>
+        <button
+          className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
+          onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
+          title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
+        >{acc.favorite ? "★" : "☆"}</button>
         {ctxMenuEl}
       </div>
     );
@@ -920,9 +1191,12 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
 
   // grid layout (vertical card)
   return (
-    <div className={baseClass} onContextMenu={handleContextMenu}>
+    <div className={baseClass} data-account-id={acc.id} onContextMenu={handleContextMenu} {...dragProps}>
       <div className={styles.cardTop}>
-        {acc.avatar && <img src={acc.avatar} alt="" className={styles.avatar} />}
+        {acc.avatar && (acc.steamId64
+          ? <a href={`https://steamcommunity.com/profiles/${acc.steamId64}`} target="_blank" rel="noreferrer"><img src={acc.avatar} alt="" className={styles.avatar} /></a>
+          : <img src={acc.avatar} alt="" className={styles.avatar} />
+        )}
         <div className={styles.cardInfo}>
           {nameEl}
           {showLoginName && (acc.alias || acc.profileName) && (
@@ -974,15 +1248,19 @@ function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop
           )}
         </div>
       )}
-      <div className={styles.cardHoverHint}>right-click</div>
+      <button
+        className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
+        onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
+        title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
+      >{acc.favorite ? "★" : "☆"}</button>
       {ctxMenuEl}
     </div>
   );
 }
 
-function Badge({ color, bg, children }) {
+function Badge({ color, bg, children, title }) {
   return (
-    <span style={{
+    <span title={title} style={{
       display: "inline-block", padding: "3px 10px", borderRadius: "4px",
       fontSize: "11px", fontFamily: "var(--mono)", fontWeight: 600,
       color, background: bg, letterSpacing: "0.05em"
@@ -1128,34 +1406,47 @@ function CooldownHistoryModal({ acc, onClose, onDeleteEntry }) {
   );
 }
 
-function DropCountdown() {
-  const [rem, setRem] = useState("");
+function DropCountdown({ collapsed = false }) {
+  const [parts, setParts] = useState({ d: 0, h: 0, m: 0, sec: 0, done: false });
   useEffect(() => {
     function tick() {
-      const weekStart = new Date(getCurrentWeekStart()).getTime();
-      const nextReset = weekStart + 7 * 24 * 60 * 60 * 1000;
+      const nextReset = new Date(getCurrentWeekStart()).getTime() + 7 * 24 * 60 * 60 * 1000;
       const diff = nextReset - Date.now();
-      if (diff <= 0) { setRem("Resetting…"); return; }
-      const s   = Math.floor(diff / 1000);
-      const d   = Math.floor(s / 86400);
-      const h   = Math.floor((s % 86400) / 3600);
-      const m   = Math.floor((s % 3600) / 60);
-      const sec = s % 60;
-      const parts = [];
-      if (d) parts.push(`${d}d`);
-      parts.push(`${String(h).padStart(2, "0")}h`);
-      parts.push(`${String(m).padStart(2, "0")}m`);
-      parts.push(`${String(sec).padStart(2, "0")}s`);
-      setRem(parts.join("  "));
+      if (diff <= 0) { setParts({ done: true }); return; }
+      const s = Math.floor(diff / 1000);
+      setParts({
+        d: Math.floor(s / 86400),
+        h: Math.floor((s % 86400) / 3600),
+        m: Math.floor((s % 3600) / 60),
+        sec: s % 60,
+        done: false,
+      });
     }
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  if (collapsed) {
+    const short = parts.done ? "—" : parts.d > 0 ? `${parts.d}d` : parts.h > 0 ? `${parts.h}h` : `${parts.m}m`;
+    return (
+      <div className={`${styles.dropCountdown} ${styles.dropCountdownCollapsed}`} title="Next drop reset">
+        <span className={styles.dropCountdownTime} style={{ fontSize: "13px" }}>{short}</span>
+      </div>
+    );
+  }
+
+  const full = parts.done ? "Resetting…" : [
+    parts.d ? `${parts.d}d` : null,
+    `${String(parts.h).padStart(2, "0")}h`,
+    `${String(parts.m).padStart(2, "0")}m`,
+    `${String(parts.sec).padStart(2, "0")}s`,
+  ].filter(Boolean).join("  ");
+
   return (
     <div className={styles.dropCountdown}>
       <span className={styles.dropCountdownLabel}>Next drop reset</span>
-      <span className={styles.dropCountdownTime}>{rem}</span>
+      <span className={styles.dropCountdownTime}>{full}</span>
     </div>
   );
 }
@@ -1206,7 +1497,35 @@ function DropHistoryModal({ acc, onClose }) {
   );
 }
 
-function SettingRow({ label, checked, onChange }) {
+function InfoTip({ text }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  function handleMouseEnter() {
+    const r = ref.current.getBoundingClientRect();
+    setPos({ top: r.top + r.height / 2, left: r.right + 8 });
+  }
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className={styles.infoTip}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setPos(null)}
+        onClick={e => e.stopPropagation()}
+      >ⓘ</span>
+      {pos && createPortal(
+        <div className={styles.infoTipTooltip} style={{ top: pos.top, left: pos.left }}>
+          {text}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function SettingRow({ label, checked, onChange, hint }) {
   return (
     <div
       className={styles.settingRow}
@@ -1214,7 +1533,10 @@ function SettingRow({ label, checked, onChange }) {
       role="button" tabIndex={0}
       onKeyDown={e => e.key === " " && onChange(!checked)}
     >
-      <span className={styles.settingRowLabel}>{label}</span>
+      <span className={styles.settingRowLabel}>
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       <div className={`${styles.settingSwitch} ${checked ? styles.settingSwitchOn : ""}`}>
         <div className={styles.settingSwitchThumb} />
       </div>
@@ -1253,20 +1575,40 @@ function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange
         <div className={styles.settingsScrollBody}>
           {tab === "display" && (
             <>
-              <SettingRow label="Show Steam ID"              checked={settings.showSteamId}       onChange={v => onChange("showSteamId", v)} />
-              <SettingRow label="Show login name"            checked={settings.showLoginName}      onChange={v => onChange("showLoginName", v)} />
-              <SettingRow label="Show playtime"              checked={settings.showPlaytime}       onChange={v => onChange("showPlaytime", v)} />
-              <SettingRow label="Prime badges"               checked={settings.showPrimeBadge}     onChange={v => onChange("showPrimeBadge", v)} />
-              <SettingRow label="Premier badges"             checked={settings.showPremierBadge}   onChange={v => onChange("showPremierBadge", v)} />
-              <SettingRow label="Drop filter: eligible only" checked={settings.dropEligibleOnly}   onChange={v => onChange("dropEligibleOnly", v)} />
+              <SettingRow label="Show Steam ID"              checked={settings.showSteamId}       onChange={v => onChange("showSteamId", v)}       hint="Shows the account's Steam64 ID on each card." />
+              <SettingRow label="Show login name"            checked={settings.showLoginName}      onChange={v => onChange("showLoginName", v)}      hint="Shows the Steam login name used to sign in to the account." />
+              <SettingRow label="Show playtime"              checked={settings.showPlaytime}       onChange={v => onChange("showPlaytime", v)}       hint="Shows total CS2 hours played on each card." />
+              <SettingRow label="Prime badges"               checked={settings.showPrimeBadge}     onChange={v => onChange("showPrimeBadge", v)}     hint="Shows a badge on accounts that have CS2 Prime status." />
+              <SettingRow label="Premier badges"             checked={settings.showPremierBadge}   onChange={v => onChange("showPremierBadge", v)}   hint="Shows a badge on accounts that are eligible to play Premier mode." />
+              <SettingRow label="Drop filter: eligible only" checked={settings.dropEligibleOnly}   onChange={v => onChange("dropEligibleOnly", v)}   hint="When the Drop filter chip is active, only show accounts with Prime — Prime is required to receive the weekly care package drop." />
               <div className={styles.settingDivider} />
-              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>Card layout</div>
+              <div className={styles.settingRow}>
+                <span className={styles.settingRowLabel}>
+                  Auto-refresh interval
+                  <InfoTip text="Automatically refreshes all Steam data (bans, playtime, avatar) in the background. Accounts without a Steam profile URL are skipped." />
+                </span>
+                <select
+                  className={styles.sortSelect}
+                  value={settings.autoRefreshInterval}
+                  onChange={e => onChange("autoRefreshInterval", Number(e.target.value))}
+                >
+                  {AUTO_REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className={styles.settingDivider} />
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Card layout
+                <InfoTip text="Switch between a grid of cards or a compact single-column list." />
+              </div>
               <div className={styles.themeToggleRow}>
                 <button className={`${styles.themeBtn} ${settings.cardLayout === "grid" ? styles.themeBtnActive : ""}`} onClick={() => onChange("cardLayout", "grid")}>Grid</button>
                 <button className={`${styles.themeBtn} ${settings.cardLayout === "list" ? styles.themeBtnActive : ""}`} onClick={() => onChange("cardLayout", "list")}>List</button>
               </div>
               <div className={styles.settingDivider} />
-              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>Steam API key</div>
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Steam API key
+                <InfoTip text="Required to fetch ban status and CS2 playtime. Get yours at steamcommunity.com/dev/apikey — it's free." />
+              </div>
               <div className={styles.apiKeyRow}>
                 <input
                   className={styles.apiKeyInput}
@@ -1296,20 +1638,28 @@ function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange
                     <option key={key} value={key}>{label}</option>
                   ))}
                 </select>
-                <button className={styles.resetThemeBtn} onClick={resetTheme}>Reset</button>
+                {settings.themeMode !== "auto" && (
+                  <button className={styles.resetThemeBtn} onClick={resetTheme}>Reset</button>
+                )}
               </div>
-              <div className={styles.colorGrid}>
-                {COLOR_LABELS.map(([key, label]) => (
-                  <div key={key} className={styles.colorRow}>
-                    <span className={styles.colorLabel}>{label}</span>
-                    <input
-                      type="color"
-                      value={settings.colors[settings.themeMode][key]}
-                      onChange={e => updateColor(key, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
+              {settings.themeMode === "auto" ? (
+                <p className={styles.autoThemeNote}>
+                  Using <strong>{window.matchMedia("(prefers-color-scheme: dark)").matches ? "Catppuccin Mocha" : "Catppuccin Latte"}</strong> based on your OS setting. Switch to a specific theme to customize colors.
+                </p>
+              ) : (
+                <div className={styles.colorGrid}>
+                  {COLOR_LABELS.map(([key, label]) => (
+                    <div key={key} className={styles.colorRow}>
+                      <span className={styles.colorLabel}>{label}</span>
+                      <input
+                        type="color"
+                        value={settings.colors[settings.themeMode][key]}
+                        onChange={e => updateColor(key, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
