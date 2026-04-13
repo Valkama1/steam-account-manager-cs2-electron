@@ -1,0 +1,57 @@
+{
+  "name": "steam-manager",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:debug": "concurrently \"npm run server:debug\" \"npm run client\"",
+    "server": "node server/index.js",
+    "server:debug": "cross-env DEBUG=1 node server/index.js",
+    "client": "cd client && npm run dev",
+    "electron:dev": "concurrently \"npm run client\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev:debug": "concurrently \"npm run client\" \"wait-on http://localhost:5173 && cross-env DEBUG=1 electron .\"",
+    "electron:build": "cd client && npm run build && cd .. && electron-builder",
+    "test": "jest --testPathPatterns=server/tests --forceExit",
+    "test:watch": "jest --testPathPatterns=server/tests --watch"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "steam-user": "^5.3.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.steammanager.app",
+    "productName": "Steam Manager",
+    "asar": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**",
+      "server/**",
+      "client/dist/**",
+      "!server/bin/**",
+      "!server/accounts.json",
+      "!server/config.json",
+      "!server/.key",
+      "!server/tests/**"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

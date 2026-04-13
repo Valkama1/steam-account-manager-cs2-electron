@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+client/node_modules/
+
+# build output
+client/dist/
+dist/
+out/
+build/
+
+# electron packager output
+dist-electron/
+release/
+
+# secrets & user data
+server/.key
+server/accounts.json
+server/config.json
+*.key
+.env
+.env.*
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# claude
+.claude/settings.local.json
