@@ -16,6 +16,7 @@ release/
 server/.key
 server/accounts.json
 server/config.json
+server/watchlist.json
 *.key
 .env
 .env.*

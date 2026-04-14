@@ -678,6 +678,12 @@
   background: color-mix(in srgb, var(--accent) 8%, var(--card));
 }
 
+.cardForbiddenDrop {
+  border-color: var(--red) !important;
+  background: color-mix(in srgb, var(--red) 8%, var(--card));
+  cursor: not-allowed;
+}
+
 .cardDragging {
   opacity: 0.4;
 }
@@ -1454,3 +1460,168 @@ a.cardName:hover {
   flex-shrink: 0;
 }
 .toastClose:hover { opacity: 1; }
+
+/* ── Ban Watcher ── */
+.watchlistModal {
+  width: 560px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.watchlistAddRow {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 4px;
+}
+
+.watchlistInput {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 12px;
+  transition: border-color 0.15s;
+}
+.watchlistInput:focus { outline: none; border-color: var(--accent); }
+.watchlistInput::placeholder { color: var(--muted); }
+
+.watchlistError {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--red);
+  padding: 0 20px 8px;
+  margin: 0;
+}
+
+.watchlistBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.watchlistEntry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.15s;
+}
+
+.watchlistEntryBanned {
+  border-color: color-mix(in srgb, var(--red) 50%, var(--border));
+  background: color-mix(in srgb, var(--red) 6%, var(--card));
+}
+
+.watchlistAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.watchlistAvatarPlaceholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.watchlistInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.watchlistName {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watchlistBadges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.watchlistBadgeVac {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  letter-spacing: 0.05em;
+}
+
+.watchlistBadgeGame {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--yellow) 35%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.watchlistClean {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green);
+}
+
+.watchlistMeta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.watchlistRemove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.watchlistRemove:hover { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+
+.watchlistFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  gap: 12px;
+}
+
+.watchlistFooterNote {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}

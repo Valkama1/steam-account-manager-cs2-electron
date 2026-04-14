@@ -8,8 +8,8 @@
     "server": "node server/index.js",
     "server:debug": "cross-env DEBUG=1 node server/index.js",
     "client": "cd client && npm run dev",
-    "electron:dev": "concurrently \"npm run client\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:dev:debug": "concurrently \"npm run client\" \"wait-on http://localhost:5173 && cross-env DEBUG=1 electron .\"",
+    "electron:dev": "concurrently \"npm run server\" \"npm run client\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev:debug": "concurrently \"npm run server:debug\" \"npm run client\" \"wait-on http://localhost:5173 && cross-env DEBUG=1 electron .\"",
     "electron:build": "cd client && npm run build && cd .. && electron-builder",
     "test": "jest --testPathPatterns=server/tests --forceExit",
     "test:watch": "jest --testPathPatterns=server/tests --watch"
