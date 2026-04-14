@@ -1,6 +1,6 @@
 import { useState } from "react";
 import styles from "../App.module.css";
-import { CloseIcon, RefreshIcon } from "./icons.jsx";
+import { CloseIcon, RefreshIcon, CheckIcon } from "./icons.jsx";
 
 function timeAgo(iso) {
   const ms    = Date.now() - new Date(iso).getTime();
@@ -17,6 +17,8 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
   const [url, setUrl]         = useState("");
   const [adding, setAdding]   = useState(false);
   const [addError, setAddError] = useState(null);
+  const [filter, setFilter]   = useState("all"); // all | banned | clean
+  const [sort, setSort]       = useState("added"); // added | name | status
 
   async function handleAdd() {
     const trimmed = url.trim();
@@ -58,12 +60,40 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
         </div>
         {addError && <p className={styles.watchlistError}>{addError}</p>}
 
+        <div className={styles.watchlistControls}>
+          <div className={styles.watchlistFilterGroup}>
+            {["all", "banned", "clean"].map(f => (
+              <button key={f} className={`${styles.watchlistFilterBtn} ${filter === f ? styles.watchlistFilterBtnOn : ""}`}
+                      onClick={() => setFilter(f)}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+          <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value)}>
+            <option value="added">Date added</option>
+            <option value="name">Name</option>
+            <option value="status">Status</option>
+          </select>
+        </div>
+
         <div className={styles.watchlistBody}>
           {watchlist.length === 0 ? (
             <p className={styles.empty} style={{ padding: "24px 0", textAlign: "center" }}>
               No accounts being watched — add a Steam profile URL above.
             </p>
-          ) : watchlist.map(entry => {
+          ) : [...watchlist]
+              .filter(e => {
+                const banned = e.vacBanned || e.gameBans > 0;
+                if (filter === "banned") return banned;
+                if (filter === "clean")  return !banned;
+                return true;
+              })
+              .sort((a, b) => {
+                if (sort === "name")   return (a.profileName || a.steamId64 || "").localeCompare(b.profileName || b.steamId64 || "");
+                if (sort === "status") return ((b.vacBanned || b.gameBans > 0) ? 1 : 0) - ((a.vacBanned || a.gameBans > 0) ? 1 : 0);
+                return 0; // "added" keeps original order
+              })
+              .map(entry => {
             const banned = entry.vacBanned || entry.gameBans > 0;
             return (
               <div key={entry.id} className={`${styles.watchlistEntry} ${banned ? styles.watchlistEntryBanned : ""}`}>
@@ -82,7 +112,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
                         {entry.gameBans} Game Ban{entry.gameBans !== 1 ? "s" : ""}
                       </span>
                     )}
-                    {!banned && <span className={styles.watchlistClean}>✓ Clean</span>}
+                    {!banned && <span className={styles.watchlistClean}><CheckIcon size={13} /> Clean</span>}
                     {entry.daysSinceLastBan > 0 && (
                       <span className={styles.watchlistMeta}>{entry.daysSinceLastBan}d since last ban</span>
                     )}

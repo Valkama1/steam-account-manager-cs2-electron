@@ -143,6 +143,7 @@ export default function App() {
     fetch("/api/config").then(r => r.json()).then(cfg => {
       setApiKey(cfg.steamApiKey || "");
       setKeyDraft(cfg.steamApiKey || "");
+      if (cfg.lastRefreshed) setLastRefreshed(new Date(cfg.lastRefreshed));
     }).catch(() => {});
   }, []);
 
@@ -234,7 +235,9 @@ export default function App() {
     const r = await fetch(`${API}/refresh-all`, { method: "POST" });
     if (r.ok) setAccounts(await r.json());
     setRefreshingAll(false);
-    setLastRefreshed(new Date());
+    const now = new Date();
+    setLastRefreshed(now);
+    fetch("/api/config", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lastRefreshed: now.toISOString() }) }).catch(() => {});
     addToast(`Refreshed ${withId.length} accounts`, "success");
   }
 
@@ -304,11 +307,31 @@ export default function App() {
 
   // ── switch account ──
   async function handleSwitch(id) {
+    const acc = accounts.find(a => a.id === id);
     const r = await fetch(`/api/switch/${id}`, { method: "POST" });
     const data = await r.json();
     if (!r.ok) {
       addToast(`Switch failed: ${data.error}`);
+      return;
     }
+    // Poll steam-active for up to 15s to confirm the switch landed
+    const expected = acc?.name?.toLowerCase();
+    if (!expected) return;
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
+      try {
+        const pr = await fetch("/api/steam-active");
+        const pd = await pr.json();
+        if (pd.running && pd.account?.toLowerCase() === expected) {
+          setActiveAccount(pd.account);
+          addToast(`Switched to ${acc.alias || acc.profileName || acc.name}`, "success");
+          clearInterval(poll);
+        } else if (attempts >= 15) {
+          clearInterval(poll);
+        }
+      } catch { clearInterval(poll); }
+    }, 1000);
   }
 
   async function handleToggleFavorite(id) {
@@ -570,9 +593,9 @@ export default function App() {
           disabled={refreshingAll}
           title={lastRefreshed ? `Last refreshed: ${lastRefreshed.toLocaleTimeString()}` : "Refresh all Steam stats"}
         >
-          {refreshingAll
-            ? (settings.sidebarCollapsed ? "…" : "Refreshing…")
-            : (settings.sidebarCollapsed ? <RefreshIcon size={18} /> : <><RefreshIcon size={13} />{"  Refresh All"}</>)}
+          {settings.sidebarCollapsed
+            ? <span className={`${styles.iconWrap} ${refreshingAll ? styles.iconWrapSpin : ""}`}><RefreshIcon size={18} /></span>
+            : (refreshingAll ? "Refreshing…" : <><RefreshIcon size={13} />{"  Refresh All"}</>)}
         </button>
         {refreshingAll && !settings.sidebarCollapsed && (
           <div className={styles.refreshProgressBar}>

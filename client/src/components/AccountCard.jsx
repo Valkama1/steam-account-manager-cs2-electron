@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
-import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "../cooldown.js";
 
 export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, onReorder, onDragStarted, onDragEntered, onDragEnded, isDragging = false, isDropTarget = false, isForbiddenDrop = false }) {
@@ -15,6 +15,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const [cdErr, setCdErr]           = useState(false);
   const [cdBusy, setCdBusy]         = useState(false);
   const [ctxPos, setCtxPos]         = useState(null);
+  const [idCopied, setIdCopied]     = useState(false);
   const ctxRef = useRef(null);
 
   const weekStart      = getCurrentWeekStart();
@@ -22,7 +23,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const gotDrop        = drops.some(d => d.weekStart === weekStart);
   const hasDropHistory = drops.length > 0;
   const displayName    = acc.alias || acc.profileName || acc.name;
-  const hasBadges      = (acc.cs2Hours != null && showPlaytime) || (acc.prime && showPrimeBadge) || (acc.premierReady && showPremierBadge);
+  const hasBadges      = showPlaytime || showPrimeBadge || showPremierBadge;
   const hasFooter      = acc.prime || acc.hasPassword || acc.steamId64 || cdOpen;
 
   useEffect(() => {
@@ -79,6 +80,14 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     setRefreshing(false);
   }
 
+  function handleCopySteamId() {
+    if (!acc.steamId64) return;
+    navigator.clipboard.writeText(acc.steamId64).then(() => {
+      setIdCopied(true);
+      setTimeout(() => setIdCopied(false), 1500);
+    });
+  }
+
   async function handleSwitch() {
     setSwitching(true);
     await onSwitch(acc.id);
@@ -95,16 +104,22 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
 
   const badgesEl = hasBadges && (
     <div className={styles.cardBadges}>
-      {acc.cs2Hours != null && showPlaytime && (
-        <span className={styles.badgeCs2}>{acc.cs2Hours.toLocaleString()}h</span>
+      {showPlaytime && (
+        <span className={`${styles.badgeCs2} ${acc.cs2Hours == null ? styles.badgeDim : ""}`}>
+          {acc.cs2Hours != null ? `${acc.cs2Hours.toLocaleString()}h` : "N/A"}
+        </span>
       )}
-      {acc.prime && showPrimeBadge && (
-        <span className={styles.badgePrime}><PrimeIcon size={10} /> Prime</span>
+      {showPrimeBadge && (
+        <span className={`${styles.badgePrime} ${!acc.prime ? styles.badgeDim : ""}`}>
+          <PrimeIcon size={10} /> Prime
+        </span>
       )}
-      {acc.premierReady && showPremierBadge && (
-        acc.premierRating != null
+      {showPremierBadge && (
+        acc.premierReady && acc.premierRating != null
           ? <PremierRatingBadge rating={acc.premierRating} />
-          : <span className={styles.badgePremier}><PremierIcon size={10} /> Premier</span>
+          : <span className={`${styles.badgePremier} ${!acc.premierReady ? styles.badgeDim : ""}`}>
+              <PremierIcon size={10} /> Premier
+            </span>
       )}
     </div>
   );
@@ -136,31 +151,31 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     <div ref={ctxRef} className={styles.ctxMenu} style={{ top: ctxPos.y, left: ctxPos.x }}>
       {acc.steamId64 && (
         <button className={styles.ctxItem} onClick={handleRefresh} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : <><RefreshIcon size={13} />{"  Refresh"}</>}
+          <RefreshIcon size={16} /> {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       )}
       <button className={styles.ctxItem} onClick={() => { setCtxPos(null); setCdOpen(true); }}>
-        Set cooldown
+        <TimerIcon size={16} /> Set cooldown
       </button>
       {hasCd && (
         <button className={styles.ctxItem} style={{ color: "var(--yellow)" }}
                 onClick={() => { setCtxPos(null); onClearCooldown(acc.id); }}>
-          Clear cooldown
+          <CloseIcon size={16} /> Clear cooldown
         </button>
       )}
       {acc.cooldownHistory?.length > 0 && (
         <button className={styles.ctxItem} onClick={() => { setCtxPos(null); onHistory(); }}>
-          Cooldown history
+          <HistoryIcon size={16} /> Cooldown history
         </button>
       )}
       {hasDropHistory && (
         <button className={styles.ctxItem} onClick={() => { setCtxPos(null); onDropHistory(); }}>
-          Drop history
+          <HistoryIcon size={16} /> Drop history
         </button>
       )}
       <div className={styles.ctxDivider} />
       <button className={styles.ctxItem} onClick={() => { setCtxPos(null); onEdit(); }}>
-        Edit
+        <EditIcon size={16} /> Edit
       </button>
     </div>
   );
@@ -180,8 +195,12 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
             <span className={styles.cardAlias}>{acc.name}</span>
           )}
           {showSteamId && acc.steamId64 && (
-            <span className={styles.cardSteamId}>{acc.steamId64}</span>
+            <span className={styles.cardSteamId} onClick={handleCopySteamId}
+                  title="Click to copy" style={{ cursor: "copy" }}>
+              {idCopied ? <><CheckIcon size={10} /> Copied!</> : <><CopyIcon size={10} /> {acc.steamId64}</>}
+            </span>
           )}
+          {acc.notes && <span className={styles.cardNotes}>{acc.notes}</span>}
           {badgesEl}
         </div>
         {statusEl}
@@ -211,12 +230,16 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   className={`${styles.btn} ${gotDrop ? styles.btnDropClaimed : ""}`}
                   onClick={() => onToggleDrop(acc.id)}
                   title={gotDrop ? "Drop claimed this week — click to unmark" : "Mark weekly drop as claimed"}
-                >{gotDrop ? "✓ Drop" : "Drop"}</button>
+                ><CheckIcon size={14} /> {gotDrop ? "Drop" : "Drop"}</button>
               )}
               {(acc.hasPassword || acc.steamId64) && (
-                <button className={`${styles.btn} ${styles.btnAccent}`}
-                        onClick={handleSwitch} disabled={switching}>
-                  {switching ? "Switching…" : "Switch"}
+                <button
+                  className={`${styles.btn} ${acc.hasPassword ? styles.btnAccent : ""}`}
+                  onClick={handleSwitch}
+                  disabled={switching || !acc.hasPassword}
+                  title={!acc.hasPassword ? "No password saved — add one in Edit to enable switching" : undefined}
+                >
+                  {switching ? <><RefreshIcon size={14} /> Switching…</> : <><SwitchIcon size={14} /> Switch</>}
                 </button>
               )}
             </>
@@ -226,7 +249,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
           className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
           onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
           title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
-        >{acc.favorite ? "★" : "☆"}</button>
+        >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
         {ctxMenuEl}
       </div>
     );
@@ -246,7 +269,10 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
             <span className={styles.cardAlias}>{acc.name}</span>
           )}
           {showSteamId && acc.steamId64 && (
-            <span className={styles.cardSteamId}>{acc.steamId64}</span>
+            <span className={styles.cardSteamId} onClick={handleCopySteamId}
+                  title="Click to copy" style={{ cursor: "copy" }}>
+              {idCopied ? <><CheckIcon size={10} /> Copied!</> : <><CopyIcon size={10} /> {acc.steamId64}</>}
+            </span>
           )}
         </div>
       </div>
@@ -279,12 +305,16 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   className={`${styles.cardFooterBtn} ${gotDrop ? styles.cardFooterBtnClaimed : ""}`}
                   onClick={() => onToggleDrop(acc.id)}
                   title={gotDrop ? "Drop claimed this week — click to unmark" : "Mark weekly drop as claimed"}
-                >{gotDrop ? "✓ Drop" : "Drop"}</button>
+                ><CheckIcon size={13} /> {gotDrop ? "Drop" : "Drop"}</button>
               )}
               {(acc.hasPassword || acc.steamId64) && (
-                <button className={`${styles.cardFooterBtn} ${styles.cardFooterBtnAccent}`}
-                        onClick={handleSwitch} disabled={switching}>
-                  {switching ? "Switching…" : "Switch"}
+                <button
+                  className={`${styles.cardFooterBtn} ${acc.hasPassword ? styles.cardFooterBtnAccent : ""}`}
+                  onClick={handleSwitch}
+                  disabled={switching || !acc.hasPassword}
+                  title={!acc.hasPassword ? "No password saved — add one in Edit to enable switching" : undefined}
+                >
+                  {switching ? <><RefreshIcon size={13} /> Switching…</> : <><SwitchIcon size={13} /> Switch</>}
                 </button>
               )}
             </>
@@ -295,7 +325,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
         className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
         onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
         title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
-      >{acc.favorite ? "★" : "☆"}</button>
+      >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
       {ctxMenuEl}
     </div>
   );

@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import styles from "../App.module.css";
 import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS, CATPPUCCIN_MOCHA } from "../constants.js";
-import { InfoIcon, CloseIcon } from "./icons.jsx";
+import { InfoIcon, CloseIcon, DownloadIcon, UploadIcon, DeleteIcon } from "./icons.jsx";
 
 export function InfoTip({ text }) {
   const ref = useRef(null);
@@ -54,6 +54,31 @@ export function SettingRow({ label, checked, onChange, hint }) {
 export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, onClearCache }) {
   const [tab, setTab] = useState("display");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+
+  function handleExport() {
+    window.open("/api/accounts/export", "_blank");
+  }
+
+  async function handleImport(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const r = await fetch("/api/accounts/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const result = await r.json();
+      if (!r.ok) { setImportStatus(`Error: ${result.error}`); return; }
+      setImportStatus(`Imported ${result.added} account(s) — ${result.total} total`);
+    } catch {
+      setImportStatus("Invalid file");
+    }
+  }
 
   function updateColor(key, value) {
     onChange("colors", {
@@ -132,19 +157,35 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
                 >Save</button>
               </div>
               <div className={styles.settingDivider} />
-              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
-                Clear API cache
-                <InfoTip text="Wipes all Steam-fetched data (avatar, name, ban status, playtime) from every account. Use Refresh All afterwards to repopulate. Useful for testing or troubleshooting." />
+              <div className={styles.settingRow} style={{ cursor: "default" }}>
+                <span className={styles.settingRowLabel}>
+                  Clear API cache
+                  <InfoTip text="Wipes all Steam-fetched data (avatar, name, ban status, playtime) from every account. Use Refresh All afterwards to repopulate. Useful for testing or troubleshooting." />
+                </span>
+                {confirmClear ? (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button className={styles.resetThemeBtn} style={{ color: "var(--red)" }} onClick={() => { onClearCache(); setConfirmClear(false); }}><DeleteIcon size={13} /> Confirm</button>
+                    <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(false)}>Cancel</button>
+                  </div>
+                ) : (
+                  <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(true)}>Clear cache</button>
+                )}
               </div>
-              {confirmClear ? (
-                <div className={styles.apiKeyRow}>
-                  <span style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>This will clear Steam data from all accounts.</span>
-                  <button className={styles.resetThemeBtn} style={{ color: "var(--red)" }} onClick={() => { onClearCache(); setConfirmClear(false); }}>Confirm</button>
-                  <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(false)}>Cancel</button>
+              <div className={styles.settingDivider} />
+              <div className={styles.settingRow} style={{ cursor: "default" }}>
+                <span className={styles.settingRowLabel}>
+                  Export / Import
+                  <InfoTip text="Export saves all accounts (without passwords) as a JSON file. Import merges accounts from a previously exported file — duplicates are skipped." />
+                </span>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button className={styles.resetThemeBtn} onClick={handleExport}><DownloadIcon size={13} /> Export</button>
+                  <label className={styles.resetThemeBtn} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <UploadIcon size={13} /> Import
+                    <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
+                  </label>
                 </div>
-              ) : (
-                <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(true)}>Clear cache</button>
-              )}
+              </div>
+              {importStatus && <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", margin: "4px 0 0" }}>{importStatus}</p>}
             </>
           )}
 

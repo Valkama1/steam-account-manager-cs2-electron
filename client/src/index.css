@@ -16,31 +16,45 @@
   --dim:       #6c7086;
   --muted:     #585b70;
   --mono:      'IBM Plex Mono', monospace;
-  --sans:      'Syne', sans-serif;
+  --sans:      'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* MD3 motion */
+  --motion-standard:   cubic-bezier(0.2, 0, 0, 1.0);
+  --motion-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  --motion-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --dur-short:  200ms;
+  --dur-medium: 300ms;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+/* MD3 scrollbar — thin and subtle */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+/* Base form controls */
 input, select {
-  font-family: var(--mono);
+  font-family: var(--sans);
+  font-size: 14px;
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 10px 14px;
-  font-size: 13px;
   width: 100%;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-short) var(--motion-standard);
 }
 input:focus { border-color: var(--accent); }
 input::placeholder { color: var(--dim); }
@@ -52,19 +66,19 @@ button {
   outline: none;
 }
 
-/* ── color picker swatch styling ── */
+/* Color picker */
 input[type="color"] {
   -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 0;
   width: 36px;
-  height: 26px;
+  height: 28px;
   cursor: pointer;
   background: none;
   overflow: hidden;
   flex-shrink: 0;
 }
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
-input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
+input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }

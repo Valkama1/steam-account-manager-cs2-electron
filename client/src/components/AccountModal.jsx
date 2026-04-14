@@ -1,6 +1,6 @@
 import { useState } from "react";
 import styles from "../App.module.css";
-import { PrimeIcon, PremierIcon, PremierRatingBadge, CloseIcon } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, PremierRatingBadge, CloseIcon, CheckIcon, DeleteIcon, RefreshIcon, PlusIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired } from "../cooldown.js";
 
 function Toggle({ label, subtitle, icon, checked, onChange }) {
@@ -28,6 +28,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
   const [prime, setPrime]           = useState(isEdit ? !!acc.prime      : false);
   const [premierReady, setPremierReady] = useState(isEdit ? !!acc.premierReady : false);
   const [premierRating, setPremierRating] = useState(isEdit && acc.premierRating != null ? String(acc.premierRating) : "");
+  const [notes, setNotes]           = useState(isEdit ? (acc.notes || "") : "");
   const [password, setPassword]     = useState("");
   const [profileUrl, setProfileUrl] = useState("");
   const [cooldown, setCooldown]     = useState("");
@@ -53,6 +54,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
     const payload = {
       name: name.trim(),
       alias: alias.trim(),
+      notes: notes.trim(),
       prime,
       premierReady,
       premierRating: ratingVal,
@@ -114,6 +116,10 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                  placeholder={isEdit && acc.hasPassword ? "••••••••" : "Steam password"} autoComplete="new-password" />
 
+          <label className={styles.label}>Notes <span>(optional)</span></label>
+          <input value={notes} onChange={e => setNotes(e.target.value)}
+                 placeholder="e.g. main, smurfing, gifted…" autoComplete="off" />
+
           <label className={styles.label}>Steam Profile URL <span>(optional)</span></label>
           <input value={profileUrl} onChange={e => setProfileUrl(e.target.value)}
                  placeholder="steamcommunity.com/id/…" autoComplete="off" />
@@ -133,7 +139,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
           <div className={styles.modalActions}>
             <button type="button" className={styles.cancelBtn} onClick={onClose}>Cancel</button>
             <button type="submit" className={styles.addBtn} disabled={busy}>
-              {busy ? "Saving…" : isEdit ? "Save" : "Add Account"}
+              {busy ? <><RefreshIcon size={14} /> Saving…</> : isEdit ? <><CheckIcon size={14} /> Save</> : <><PlusIcon size={14} /> Add Account</>}
             </button>
           </div>
 
@@ -150,12 +156,12 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
             {confirmDelete ? (
               <>
                 <span className={styles.dangerLabel}>Are you sure?</span>
-                <button className={styles.dangerConfirm} onClick={() => onDelete(acc.id)}>Delete</button>
+                <button className={styles.dangerConfirm} onClick={() => onDelete(acc.id)}><DeleteIcon size={13} /> Delete</button>
                 <button className={styles.dangerCancel} onClick={() => setConfirmDelete(false)}>Cancel</button>
               </>
             ) : (
               <button className={styles.dangerTrigger} onClick={() => setConfirmDelete(true)}>
-                Delete account
+                <DeleteIcon size={13} /> Delete account
               </button>
             )}
           </div>

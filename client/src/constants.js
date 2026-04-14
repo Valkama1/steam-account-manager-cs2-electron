@@ -21,12 +21,26 @@ export const OLED_DARK = {
   "green": "#00ff87", "yellow": "#ffe600", "red": "#ff2d55",
   "text": "#ffffff", "dim": "#888888", "muted": "#4a4a4a",
 };
+export const MATERIAL_DARK = {
+  "bg": "#141218", "surface": "#1c1b1f", "card": "#211f26", "card-h": "#2b2930",
+  "border": "#49454f", "accent": "#d0bcff", "accent-d": "#ccc2dc",
+  "green": "#6dd58c", "yellow": "#e6c353", "red": "#f2b8b5",
+  "text": "#e6e0e9", "dim": "#cac4d0", "muted": "#938f99",
+};
+export const MATERIAL_LIGHT = {
+  "bg": "#fef7ff", "surface": "#f3edf7", "card": "#ece6f0", "card-h": "#e6e0e9",
+  "border": "#cac4d0", "accent": "#6750a4", "accent-d": "#7965af",
+  "green": "#386a20", "yellow": "#6e5c00", "red": "#b3261e",
+  "text": "#1d1b20", "dim": "#49454f", "muted": "#79747e",
+};
 
 export const THEME_PRESETS = {
-  auto:  { label: "System Auto",      defaults: null           },
-  dark:  { label: "Catppuccin Mocha", defaults: CATPPUCCIN_MOCHA },
-  light: { label: "Catppuccin Latte", defaults: CATPPUCCIN_LATTE },
-  oled:  { label: "OLED Dark",        defaults: OLED_DARK },
+  auto:           { label: "System Auto",      defaults: null             },
+  dark:           { label: "Catppuccin Mocha", defaults: CATPPUCCIN_MOCHA },
+  light:          { label: "Catppuccin Latte", defaults: CATPPUCCIN_LATTE },
+  oled:           { label: "OLED Dark",        defaults: OLED_DARK        },
+  "material-dark":  { label: "Material Dark",  defaults: MATERIAL_DARK    },
+  "material-light": { label: "Material Light", defaults: MATERIAL_LIGHT   },
 };
 export const COLOR_LABELS = [
   ["bg", "Background"], ["surface", "Sidebar"],
@@ -58,7 +72,7 @@ export const DEFAULT_SETTINGS = {
   sortDir: "desc",
   customOrder: [],
   themeMode: "dark",
-  colors: { dark: { ...CATPPUCCIN_MOCHA }, light: { ...CATPPUCCIN_LATTE }, oled: { ...OLED_DARK } },
+  colors: { dark: { ...CATPPUCCIN_MOCHA }, light: { ...CATPPUCCIN_LATTE }, oled: { ...OLED_DARK }, "material-dark": { ...MATERIAL_DARK }, "material-light": { ...MATERIAL_LIGHT } },
   autoRefreshInterval: 0,
 };
 

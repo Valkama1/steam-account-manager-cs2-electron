@@ -92,6 +92,29 @@ app.post("/api/accounts", async (req, res) => {
   res.status(201).json(sanitize(account));
 });
 
+app.get("/api/accounts/export", (_req, res) => {
+  const accounts = readDB().map(sanitize); // never export raw passwords
+  res.setHeader("Content-Disposition", `attachment; filename="steam-manager-export-${new Date().toISOString().slice(0,10)}.json"`);
+  res.setHeader("Content-Type", "application/json");
+  res.send(JSON.stringify(accounts, null, 2));
+});
+
+app.post("/api/accounts/import", (req, res) => {
+  const incoming = req.body;
+  if (!Array.isArray(incoming)) return res.status(400).json({ error: "Expected an array of accounts" });
+  const existing = readDB();
+  const existingIds = new Set(existing.map(a => a.id));
+  let added = 0;
+  for (const acc of incoming) {
+    if (!acc.name) continue;
+    if (existingIds.has(acc.id)) continue; // skip duplicates
+    existing.push({ ...acc, id: acc.id || uuidv4(), password: null }); // never import passwords
+    added++;
+  }
+  writeDB(existing);
+  res.json({ added, total: existing.length });
+});
+
 app.post("/api/accounts/clear-cache", (_req, res) => {
   const STEAM_FIELDS = ["avatar", "profileName", "vacBanned", "gameBans", "daysSinceLastBan", "cs2Hours", "cs2LastPlayed"];
   const accounts = readDB().map(a => {
@@ -155,13 +178,17 @@ async function doSwitch(req, res) {
 
   if (inVdf) {
     dbg(`[switch] fast-path → ${username} (steamId64=${account.steamId64})`);
-    await killSteam();
-    dbg(`[switch] Steam down, waiting 1500ms`);
-    await new Promise(r => setTimeout(r, 1500));
+    const wasRunning = await killSteam(steamPath);
+    if (wasRunning) {
+      dbg(`[switch] Steam killed, waiting 200ms for file handles to release`);
+      await new Promise(r => setTimeout(r, 200));
+    }
     const vdfOk = setSteamAutoLogin(steamDir, account.steamId64);
     dbg(`[switch] setSteamAutoLogin returned ${vdfOk}`);
-    await new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v AutoLoginUser /t REG_SZ /d "${username}" /f`, r));
-    await new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v RememberPassword /t REG_DWORD /d 1 /f`, r));
+    await Promise.all([
+      new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v AutoLoginUser /t REG_SZ /d "${username}" /f`, r)),
+      new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v RememberPassword /t REG_DWORD /d 1 /f`, r)),
+    ]);
     dbg(`[switch] registry set, launching Steam`);
     const fastPassword = account.password ? decryptPassword(account.password) : null;
     const spawnArgs    = fastPassword ? ["-login", username, fastPassword] : [];
@@ -189,8 +216,8 @@ async function doSwitch(req, res) {
   if (!plainPassword) return res.status(500).json({ error: "Failed to decrypt password" });
 
   dbg(`[switch] password path → ${username}`);
-  await killSteam();
-  await new Promise(r => setTimeout(r, 1500));
+  const wasRunning = await killSteam(steamPath);
+  if (wasRunning) await new Promise(r => setTimeout(r, 200));
 
   const child = spawn(steamPath, ["-login", username, plainPassword], { cwd: steamDir, detached: true, stdio: "ignore", windowsHide: true });
   child.on("error", e => console.error(`[switch] spawn error: ${e.message}`));
