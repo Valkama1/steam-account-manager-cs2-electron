@@ -129,29 +129,41 @@ function getSteamPath() {
 
 function killSteam() {
   return new Promise((resolve) => {
-    getSteamPath().then((steamPath) => {
-      if (steamPath) exec(`"${steamPath}" -shutdown`);
+    exec('tasklist /NH', (_err, stdout) => {
+      const out     = (stdout || "").toLowerCase();
+      const running = out.includes("steam.exe") ||
+                      out.includes("steamwebhelper.exe") ||
+                      out.includes("steamservice.exe");
 
-      let attempts = 0;
-      const interval = setInterval(() => {
-        exec('tasklist /NH', (_err, stdout) => {
-          const out  = (stdout || "").toLowerCase();
-          const dead = !out.includes("steam.exe") &&
-                       !out.includes("steamwebhelper.exe") &&
-                       !out.includes("steamservice.exe");
-          if (dead) {
-            dbg(`[killSteam] all Steam processes gone after ${attempts * 500}ms`);
-            clearInterval(interval);
-            resolve();
-          } else if (++attempts >= 60) {
-            dbg(`[killSteam] graceful shutdown timed out, force killing`);
-            exec(
-              "taskkill /F /T /IM steam.exe & taskkill /F /IM steamwebhelper.exe & taskkill /F /IM SteamService.exe",
-              () => { clearInterval(interval); resolve(); }
-            );
-          }
-        });
-      }, 500);
+      if (!running) {
+        dbg("[killSteam] Steam not running, skipping shutdown");
+        return resolve();
+      }
+
+      getSteamPath().then((steamPath) => {
+        if (steamPath) exec(`"${steamPath}" -shutdown`);
+
+        let attempts = 0;
+        const interval = setInterval(() => {
+          exec('tasklist /NH', (_err2, stdout2) => {
+            const out2 = (stdout2 || "").toLowerCase();
+            const dead = !out2.includes("steam.exe") &&
+                         !out2.includes("steamwebhelper.exe") &&
+                         !out2.includes("steamservice.exe");
+            if (dead) {
+              dbg(`[killSteam] all Steam processes gone after ${attempts * 500}ms`);
+              clearInterval(interval);
+              resolve();
+            } else if (++attempts >= 60) {
+              dbg(`[killSteam] graceful shutdown timed out, force killing`);
+              exec(
+                "taskkill /F /T /IM steam.exe & taskkill /F /IM steamwebhelper.exe & taskkill /F /IM SteamService.exe",
+                () => { clearInterval(interval); resolve(); }
+              );
+            }
+          });
+        }, 500);
+      });
     });
   });
 }
