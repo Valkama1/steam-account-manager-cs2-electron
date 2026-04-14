@@ -55,6 +55,7 @@ async function checkAllBans() {
 
   for (const entry of list) {
     if (!entry.steamId64) continue;
+    if (entry.vacBanned || entry.gameBans > 0) continue; // already banned — no need to keep polling
     try {
       const bans = await fetchBanData(entry.steamId64);
       if (!bans) continue;
