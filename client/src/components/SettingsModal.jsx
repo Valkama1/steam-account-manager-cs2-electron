@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import styles from "../App.module.css";
 import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS, CATPPUCCIN_MOCHA } from "../constants.js";
+import { InfoIcon, CloseIcon } from "./icons.jsx";
 
 export function InfoTip({ text }) {
   const ref = useRef(null);
@@ -20,7 +21,7 @@ export function InfoTip({ text }) {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setPos(null)}
         onClick={e => e.stopPropagation()}
-      >ⓘ</span>
+      ><InfoIcon size={12} /></span>
       {pos && createPortal(
         <div className={styles.infoTipTooltip} style={{ top: pos.top, left: pos.left }}>
           {text}
@@ -50,8 +51,9 @@ export function SettingRow({ label, checked, onChange, hint }) {
   );
 }
 
-export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey }) {
+export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, onClearCache }) {
   const [tab, setTab] = useState("display");
+  const [confirmClear, setConfirmClear] = useState(false);
 
   function updateColor(key, value) {
     onChange("colors", {
@@ -70,7 +72,7 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
       <div className={`${styles.modal} ${styles.settingsModal}`} onMouseDown={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>Settings</span>
-          <button className={styles.modalClose} onClick={onClose}>✕</button>
+          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
 
         <div className={styles.settingsTabs}>
@@ -129,6 +131,20 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
                   disabled={keyDraft === apiKey}
                 >Save</button>
               </div>
+              <div className={styles.settingDivider} />
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Clear API cache
+                <InfoTip text="Wipes all Steam-fetched data (avatar, name, ban status, playtime) from every account. Use Refresh All afterwards to repopulate. Useful for testing or troubleshooting." />
+              </div>
+              {confirmClear ? (
+                <div className={styles.apiKeyRow}>
+                  <span style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>This will clear Steam data from all accounts.</span>
+                  <button className={styles.resetThemeBtn} style={{ color: "var(--red)" }} onClick={() => { onClearCache(); setConfirmClear(false); }}>Confirm</button>
+                  <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(false)}>Cancel</button>
+                </div>
+              ) : (
+                <button className={styles.resetThemeBtn} onClick={() => setConfirmClear(true)}>Clear cache</button>
+              )}
             </>
           )}
 

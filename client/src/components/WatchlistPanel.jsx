@@ -1,5 +1,6 @@
 import { useState } from "react";
 import styles from "../App.module.css";
+import { CloseIcon, RefreshIcon } from "./icons.jsx";
 
 function timeAgo(iso) {
   const ms    = Date.now() - new Date(iso).getTime();
@@ -36,7 +37,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
       <div className={`${styles.modal} ${styles.watchlistModal}`} onMouseDown={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>Ban Watcher</span>
-          <button className={styles.modalClose} onClick={onClose}>✕</button>
+          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
 
         <div className={styles.watchlistAddRow}>
@@ -95,7 +96,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
                   className={styles.watchlistRemove}
                   onClick={() => onRemove(entry.id)}
                   title="Stop watching"
-                >✕</button>
+                ><CloseIcon size={12} /></button>
               </div>
             );
           })}
@@ -104,7 +105,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
         <div className={styles.watchlistFooter}>
           <span className={styles.watchlistFooterNote}>Auto-checks every 4 hours while the app is open</span>
           <button className={styles.refreshAllBtn} style={{ width: "auto", padding: "6px 14px" }} onClick={onCheckAll} disabled={checking}>
-            {checking ? "Checking…" : "↺  Check Now"}
+            {checking ? "Checking…" : <><RefreshIcon size={13} />{"  Check Now"}</>}
           </button>
         </div>
       </div>

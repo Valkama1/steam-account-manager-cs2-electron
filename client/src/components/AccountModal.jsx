@@ -1,6 +1,6 @@
 import { useState } from "react";
 import styles from "../App.module.css";
-import { PrimeIcon, PremierIcon, PremierRatingBadge } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, PremierRatingBadge, CloseIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired } from "../cooldown.js";
 
 function Toggle({ label, subtitle, icon, checked, onChange }) {
@@ -75,7 +75,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
       <div className={styles.modal} onMouseDown={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>{isEdit ? "Edit Account" : "Add Account"}</span>
-          <button className={styles.modalClose} onClick={onClose}>✕</button>
+          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>

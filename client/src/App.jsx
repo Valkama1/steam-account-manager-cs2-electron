@@ -11,6 +11,7 @@ import DropCountdown from "./components/DropCountdown.jsx";
 import Section from "./components/Section.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 import WatchlistPanel from "./components/WatchlistPanel.jsx";
+import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon } from "./components/icons.jsx";
 
 export default function App() {
   const [accounts, setAccounts] = useState([]);
@@ -165,6 +166,12 @@ export default function App() {
     setApiKey(keyDraft.trim());
   }
 
+  async function handleClearCache() {
+    const r = await fetch(`${API}/clear-cache`, { method: "POST" });
+    if (r.ok) setAccounts(await r.json());
+    addToast("API cache cleared", "success");
+  }
+
   // close modals on Escape
   useEffect(() => {
     if (!modal) return;
@@ -224,14 +231,8 @@ export default function App() {
     const withId = accounts.filter(a => a.steamId64);
     if (!withId.length) return;
     setRefreshingAll(true);
-    for (const acc of withId) {
-      await fetch(`${API}/${acc.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileUrl: `https://steamcommunity.com/profiles/${acc.steamId64}` }),
-      });
-    }
-    await fetchAccounts();
+    const r = await fetch(`${API}/refresh-all`, { method: "POST" });
+    if (r.ok) setAccounts(await r.json());
     setRefreshingAll(false);
     setLastRefreshed(new Date());
     addToast(`Refreshed ${withId.length} accounts`, "success");
@@ -555,18 +556,12 @@ export default function App() {
             <span className={styles.logoMark}>▣</span>
             {!settings.sidebarCollapsed && <span className={styles.logoText}>STEAM<br /><em>MANAGER</em></span>}
           </div>
-          {!settings.sidebarCollapsed && (
-            <div style={{ display: "flex", gap: 4 }}>
-              <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher">👁</button>
-              <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
-            </div>
-          )}
         </div>
 
         <DropCountdown collapsed={settings.sidebarCollapsed} />
 
         <button className={styles.addBtn} onClick={() => setModal({ mode: "add" })}>
-          {settings.sidebarCollapsed ? "+" : "+ Add Account"}
+          {settings.sidebarCollapsed ? <PlusIcon size={18} /> : <><PlusIcon size={13} /> Add Account</>}
         </button>
 
         <button
@@ -577,21 +572,31 @@ export default function App() {
         >
           {refreshingAll
             ? (settings.sidebarCollapsed ? "…" : "Refreshing…")
-            : (settings.sidebarCollapsed ? "↺" : "↺  Refresh All")}
+            : (settings.sidebarCollapsed ? <RefreshIcon size={18} /> : <><RefreshIcon size={13} />{"  Refresh All"}</>)}
         </button>
-
-        {settings.sidebarCollapsed && (
-          <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher">👁</button>
+        {refreshingAll && !settings.sidebarCollapsed && (
+          <div className={styles.refreshProgressBar}>
+            <div className={styles.refreshProgressFill} />
+          </div>
         )}
-        {settings.sidebarCollapsed && (
-          <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+
+        {settings.sidebarCollapsed ? (
+          <>
+            <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={18} /></button>
+            <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings"><SettingsIcon size={18} /></button>
+          </>
+        ) : (
+          <div className={styles.sidebarIconRow}>
+            <button className={styles.sidebarIconBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={14} /> Ban Watcher</button>
+            <button className={styles.sidebarIconBtn} onClick={() => setSettingsOpen(true)} title="Settings"><SettingsIcon size={14} /> Settings</button>
+          </div>
         )}
 
         <button
           className={styles.collapseBtn}
           onClick={() => updateSetting("sidebarCollapsed", !settings.sidebarCollapsed)}
           title={settings.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >{settings.sidebarCollapsed ? "›" : "‹"}</button>
+        >{settings.sidebarCollapsed ? <ChevronRightIcon size={14} /> : <ChevronLeftIcon size={14} />}</button>
       </aside>
 
       {/* ── main ── */}
@@ -629,7 +634,7 @@ export default function App() {
                     className={styles.sortDirBtn}
                     onClick={() => updateSetting("sortDir", settings.sortDir === "asc" ? "desc" : "asc")}
                     title={settings.sortDir === "asc" ? "Ascending" : "Descending"}
-                  >{settings.sortDir === "asc" ? "↑" : "↓"}</button>
+                  >{settings.sortDir === "asc" ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}</button>
                 )}
               </div>
             </div>
@@ -757,13 +762,13 @@ export default function App() {
       )}
       {settingsOpen && (
         <SettingsModal settings={settings} onChange={updateSetting} onClose={() => setSettingsOpen(false)}
-          keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey} />
+          keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey} onClearCache={handleClearCache} />
       )}
       <div className={styles.toastContainer}>
         {toasts.map(t => (
           <div key={t.id} className={`${styles.toast} ${t.type === "error" ? styles.toastError : t.type === "success" ? styles.toastSuccess : styles.toastInfo}`}>
             <span>{t.message}</span>
-            <button className={styles.toastClose} onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}>✕</button>
+            <button className={styles.toastClose} onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}><CloseIcon size={11} /></button>
           </div>
         ))}
       </div>

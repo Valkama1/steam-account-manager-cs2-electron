@@ -1,6 +1,7 @@
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
 import { getCurrentWeekStart } from "../cooldown.js";
+import { CloseIcon } from "./icons.jsx";
 
 function fmtWeek(weekStartIso) {
   const d = new Date(weekStartIso);
@@ -19,7 +20,7 @@ export default function DropHistoryModal({ acc, onClose }) {
           <span className={styles.modalTitle}>
             Weekly Drops — {acc.alias || acc.profileName || acc.name}
           </span>
-          <button className={styles.modalClose} onClick={onClose}>✕</button>
+          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
         {drops.length === 0 ? (
           <p className={styles.empty} style={{ margin: "20px 0" }}>No drops recorded yet.</p>

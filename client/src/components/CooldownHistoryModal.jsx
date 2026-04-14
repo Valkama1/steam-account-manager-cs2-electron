@@ -1,6 +1,7 @@
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
 import { isExpired } from "../cooldown.js";
+import { CloseIcon } from "./icons.jsx";
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -20,7 +21,7 @@ export default function CooldownHistoryModal({ acc, onClose, onDeleteEntry }) {
           <span className={styles.modalTitle}>
             Cooldown History — {acc.alias || acc.profileName || acc.name}
           </span>
-          <button className={styles.modalClose} onClick={onClose}>✕</button>
+          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
         {history.length === 0 ? (
           <p className={styles.empty} style={{ margin: "20px 0" }}>No cooldown history yet.</p>
@@ -45,7 +46,7 @@ export default function CooldownHistoryModal({ acc, onClose, onDeleteEntry }) {
                     className={styles.historyDelete}
                     onClick={() => onDeleteEntry(entry.originalIndex)}
                     title="Remove this entry"
-                  >✕</button>
+                  ><CloseIcon size={12} /></button>
                 </div>
               );
             })}

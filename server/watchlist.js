@@ -1,7 +1,7 @@
 const fs   = require("fs");
 const path = require("path");
 const { v4: uuidv4 }               = require("uuid");
-const { fetchSteamProfile, fetchBanData } = require("./steam.js");
+const { fetchSteamProfile, fetchBanData, fetchBanDataBatch } = require("./steam.js");
 
 const DATA_DIR       = process.env.DATA_DIR || __dirname;
 const WATCHLIST_PATH = path.join(DATA_DIR, "watchlist.json");
@@ -40,8 +40,11 @@ async function addEntry(profileUrl) {
     vacBanned:        bans?.vacBanned        ?? false,
     gameBans:         bans?.gameBans         ?? 0,
     daysSinceLastBan: bans?.daysSinceLastBan ?? null,
+    // Baseline = ban state at time of adding. Future checks notify only when bans EXCEED this.
+    baselineVacBanned: bans?.vacBanned ?? false,
+    baselineGameBans:  bans?.gameBans  ?? 0,
     bannedAt:         alreadyBanned ? new Date().toISOString() : null,
-    notified:         alreadyBanned, // already banned → no new notification needed
+    notified:         true, // never notify for bans that existed when the account was added
   };
 
   list.push(entry);
@@ -53,33 +56,38 @@ async function checkAllBans() {
   const list = readWatchlist();
   if (!list.length) return list;
 
+  const ids    = list.map(e => e.steamId64).filter(Boolean);
+  const bansMap = await fetchBanDataBatch(ids); // one API call for all accounts
+
   for (const entry of list) {
     if (!entry.steamId64) continue;
-    if (entry.vacBanned || entry.gameBans > 0) continue; // already banned — no need to keep polling
-    try {
-      const bans = await fetchBanData(entry.steamId64);
-      if (!bans) continue;
+    const bans = bansMap[entry.steamId64];
+    if (!bans) continue;
 
-      const wasClean = !entry.vacBanned && !(entry.gameBans > 0);
-      const nowBanned = !!(bans.vacBanned || bans.gameBans > 0);
+    // Compare against the ban state when this account was added (the baseline).
+    // This way accounts with pre-existing bans still get monitored for NEW bans.
+    const baselineVac  = entry.baselineVacBanned ?? entry.vacBanned  ?? false;
+    const baselineGame = entry.baselineGameBans  ?? entry.gameBans   ?? 0;
+    const newVac       = bans.vacBanned && !baselineVac;
+    const newGameBans  = bans.gameBans > baselineGame;
 
-      entry.vacBanned        = bans.vacBanned;
-      entry.gameBans         = bans.gameBans;
-      entry.daysSinceLastBan = bans.daysSinceLastBan;
-      entry.lastChecked      = new Date().toISOString();
+    entry.vacBanned        = bans.vacBanned;
+    entry.gameBans         = bans.gameBans;
+    entry.daysSinceLastBan = bans.daysSinceLastBan;
+    entry.lastChecked      = new Date().toISOString();
 
-      if (wasClean && nowBanned) {
-        entry.bannedAt = new Date().toISOString();
-        entry.notified = false; // client will show desktop notification on next poll
-        console.log(`[watchlist] ban detected: ${entry.profileName} (${entry.steamId64})`);
-      }
-    } catch (e) {
-      console.error(`[watchlist] error checking ${entry.steamId64}:`, e.message);
+    if (newVac || newGameBans) {
+      entry.bannedAt = new Date().toISOString();
+      entry.notified = false;
+      // Advance the baseline so a second check doesn't re-fire for the same ban
+      entry.baselineVacBanned = bans.vacBanned;
+      entry.baselineGameBans  = bans.gameBans;
+      console.log(`[watchlist] new ban detected: ${entry.profileName} (${entry.steamId64})`);
     }
   }
 
   writeWatchlist(list);
-  console.log(`[watchlist] checked ${list.length} account(s)`);
+  console.log(`[watchlist] checked ${list.length} account(s) in one batch request`);
   return list;
 }
 

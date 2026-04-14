@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
-import { PrimeIcon, PremierIcon, PremierRatingBadge } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "../cooldown.js";
 
 export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, onReorder, onDragStarted, onDragEntered, onDragEnded, isDragging = false, isDropTarget = false, isForbiddenDrop = false }) {
@@ -136,7 +136,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     <div ref={ctxRef} className={styles.ctxMenu} style={{ top: ctxPos.y, left: ctxPos.x }}>
       {acc.steamId64 && (
         <button className={styles.ctxItem} onClick={handleRefresh} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "↺  Refresh"}
+          {refreshing ? "Refreshing…" : <><RefreshIcon size={13} />{"  Refresh"}</>}
         </button>
       )}
       <button className={styles.ctxItem} onClick={() => { setCtxPos(null); setCdOpen(true); }}>
@@ -202,7 +202,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
               <button className={`${styles.cardFooterBtn} ${styles.cardFooterBtnAccent}`}
                       onClick={handleCdSubmit} disabled={cdBusy}>{cdBusy ? "…" : "Set"}</button>
               <button className={styles.cardFooterBtn}
-                      onClick={() => { setCdOpen(false); setCdInput(""); setCdErr(false); }}>✕</button>
+                      onClick={() => { setCdOpen(false); setCdInput(""); setCdErr(false); }}><CloseIcon size={12} /></button>
             </>
           ) : (
             <>
@@ -270,7 +270,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
               <button className={`${styles.cardFooterBtn} ${styles.cardFooterBtnAccent}`}
                       onClick={handleCdSubmit} disabled={cdBusy}>{cdBusy ? "…" : "Set"}</button>
               <button className={styles.cardFooterBtn}
-                      onClick={() => { setCdOpen(false); setCdInput(""); setCdErr(false); }}>✕</button>
+                      onClick={() => { setCdOpen(false); setCdInput(""); setCdErr(false); }}><CloseIcon size={12} /></button>
             </>
           ) : (
             <>

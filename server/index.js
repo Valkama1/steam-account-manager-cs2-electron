@@ -8,7 +8,7 @@ const { v4: uuidv4 }  = require("uuid");
 const { encryptPassword, decryptPassword, generateSteamGuardCode } = require("./crypto.js");
 const { readConfig, writeConfig }                                   = require("./config.js");
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
-const { fetchSteamFields, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
+const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
 
 const DEBUG = process.env.DEBUG === "1";
@@ -24,6 +24,53 @@ app.use(express.json());
 
 app.get("/api/accounts", (req, res) => {
   res.json(readDB().map(sanitize));
+});
+
+// ── Batch refresh all accounts ─────────────────────────────────────────────
+// Must be before /:id so Express doesn't treat "refresh-all" as an id.
+
+app.post("/api/accounts/refresh-all", async (_req, res) => {
+  const accounts = readDB();
+  const withId   = accounts.filter(a => a.steamId64);
+  if (!withId.length) return res.json(accounts.map(sanitize));
+
+  const ids = withId.map(a => a.steamId64);
+
+  // One API call each for bans and summaries (handles up to 100 per call)
+  const [bansMap, summariesMap] = await Promise.all([
+    fetchBanDataBatch(ids),
+    fetchPlayerSummariesBatch(ids),
+  ]);
+
+  // GetOwnedGames can't be batched — run 5 at a time to stay within rate limits
+  const gameMap = {};
+  let cursor = 0;
+  async function gameWorker() {
+    while (cursor < withId.length) {
+      const acc = withId[cursor++];
+      const g = await fetchGameData(acc.steamId64);
+      if (g) gameMap[acc.steamId64] = g;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(5, withId.length) }, gameWorker));
+
+  // Write updates
+  for (const acc of withId) {
+    const i = accounts.findIndex(a => a.id === acc.id);
+    if (i === -1) continue;
+    const bans    = bansMap[acc.steamId64];
+    const summary = summariesMap[acc.steamId64];
+    const games   = gameMap[acc.steamId64];
+    accounts[i] = {
+      ...accounts[i],
+      ...(summary && { avatar: summary.avatar, profileName: summary.profileName }),
+      ...(bans    && { vacBanned: bans.vacBanned, gameBans: bans.gameBans, daysSinceLastBan: bans.daysSinceLastBan }),
+      ...(games   && { cs2Hours: games.cs2Hours, cs2LastPlayed: games.cs2LastPlayed }),
+    };
+  }
+
+  writeDB(accounts);
+  res.json(accounts.map(sanitize));
 });
 
 app.post("/api/accounts", async (req, res) => {
@@ -43,6 +90,17 @@ app.post("/api/accounts", async (req, res) => {
   accounts.push(account);
   writeDB(accounts);
   res.status(201).json(sanitize(account));
+});
+
+app.post("/api/accounts/clear-cache", (_req, res) => {
+  const STEAM_FIELDS = ["avatar", "profileName", "vacBanned", "gameBans", "daysSinceLastBan", "cs2Hours", "cs2LastPlayed"];
+  const accounts = readDB().map(a => {
+    const cleared = {};
+    for (const f of STEAM_FIELDS) cleared[f] = null;
+    return { ...a, ...cleared };
+  });
+  writeDB(accounts);
+  res.json(accounts.map(sanitize));
 });
 
 app.patch("/api/accounts/:id", async (req, res) => {

@@ -188,4 +188,51 @@ function setSteamAutoLogin(steamDir, steamId64) {
   return true;
 }
 
-module.exports = { fetchSteamProfile, fetchBanData, fetchSteamFields, getSteamPath, killSteam, setSteamAutoLogin };
+// ── Batch Steam API helpers ───────────────────────────────────────────────────
+// Both endpoints accept up to 100 steamIds per call.
+
+function fetchBanDataBatch(steamId64s) {
+  return new Promise((resolve) => {
+    const { steamApiKey } = readConfig();
+    if (!steamApiKey || !steamId64s.length) return resolve({});
+    const url = `https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=${steamApiKey}&steamids=${steamId64s.join(",")}`;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => {
+        if (res.statusCode !== 200) return resolve({});
+        try {
+          const result = {};
+          for (const p of JSON.parse(data)?.players ?? []) {
+            result[p.SteamId] = { vacBanned: p.VACBanned, gameBans: p.NumberOfGameBans, daysSinceLastBan: p.DaysSinceLastBan };
+          }
+          resolve(result);
+        } catch { resolve({}); }
+      });
+    }).on("error", () => resolve({}));
+  });
+}
+
+function fetchPlayerSummariesBatch(steamId64s) {
+  return new Promise((resolve) => {
+    const { steamApiKey } = readConfig();
+    if (!steamApiKey || !steamId64s.length) return resolve({});
+    const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${steamApiKey}&steamids=${steamId64s.join(",")}`;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => {
+        if (res.statusCode !== 200) return resolve({});
+        try {
+          const result = {};
+          for (const p of JSON.parse(data)?.response?.players ?? []) {
+            result[p.steamid] = { avatar: p.avatarmedium, profileName: p.personaname };
+          }
+          resolve(result);
+        } catch { resolve({}); }
+      });
+    }).on("error", () => resolve({}));
+  });
+}
+
+module.exports = { fetchSteamProfile, fetchBanData, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchSteamFields, getSteamPath, killSteam, setSteamAutoLogin };

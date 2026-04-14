@@ -1,4 +1,5 @@
 import styles from "../App.module.css";
+import { ChevronDownIcon, ChevronRightIcon } from "./icons.jsx";
 
 export default function Section({ title, accent, children, layout, count, collapsed, onToggle }) {
   return (
@@ -8,7 +9,7 @@ export default function Section({ title, accent, children, layout, count, collap
           {title}
           <span className={styles.sectionCount}>({count})</span>
         </h2>
-        <span className={styles.sectionChevron} style={{ color: accent }}>{collapsed ? "›" : "‹"}</span>
+        <span className={styles.sectionChevron} style={{ color: accent }}>{collapsed ? <ChevronRightIcon size={16} /> : <ChevronDownIcon size={16} />}</span>
       </button>
       {!collapsed && <div className={layout === "list" ? styles.cardGridList : styles.cardGrid}>{children}</div>}
     </section>

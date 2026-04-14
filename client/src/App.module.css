@@ -67,6 +67,25 @@
 .refreshAllBtn:hover:not(:disabled) { color: var(--text); border-color: var(--dim); }
 .refreshAllBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.refreshProgressBar {
+  width: 100%;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.refreshProgressFill {
+  height: 100%;
+  width: 40%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: progressSlide 1.4s ease-in-out infinite;
+}
+@keyframes progressSlide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
 .collapseBtn {
   margin-top: auto;
   background: none;
@@ -957,6 +976,28 @@ a.cardName:hover {
 }
 .gearBtn:hover { color: var(--text); background: var(--card); }
 
+.sidebarIconRow {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebarIconBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 7px 8px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sidebarIconBtn:hover { color: var(--text); border-color: var(--dim); background: var(--card); }
+
 .settingDivider {
   height: 1px;
   background: var(--border);
@@ -1010,7 +1051,8 @@ a.cardName:hover {
 
 .infoTip {
   position: relative;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
   color: var(--muted);
   cursor: default;
   line-height: 1;
