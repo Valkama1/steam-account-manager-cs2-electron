@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
 import { isExpired, getCurrentWeekStart } from "./cooldown.js";
 import styles from "./App.module.css";
 import { API, CATPPUCCIN_MOCHA, CATPPUCCIN_LATTE, SETTINGS_KEY, SORT_OPTIONS } from "./constants.js";
@@ -7,6 +9,7 @@ import AccountCard from "./components/AccountCard.jsx";
 import AccountModal from "./components/AccountModal.jsx";
 import CooldownHistoryModal from "./components/CooldownHistoryModal.jsx";
 import DropHistoryModal from "./components/DropHistoryModal.jsx";
+import LeetifyModal from "./components/LeetifyModal.jsx";
 import DropCountdown from "./components/DropCountdown.jsx";
 import Section from "./components/Section.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
@@ -18,10 +21,14 @@ export default function App() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [modal, setModal]         = useState(null);
-  const [historyAcc, setHistoryAcc] = useState(null);
+  const [historyAcc, setHistoryAcc]       = useState(null);
   const [dropHistoryAcc, setDropHistoryAcc] = useState(null);
-  const [apiKey, setApiKey]       = useState("");
-  const [keyDraft, setKeyDraft]   = useState("");
+  const [statsAcc, setStatsAcc]           = useState(null);
+  const [leetifyCache, setLeetifyCache]   = useState({});
+  const [apiKey, setApiKey]             = useState("");
+  const [keyDraft, setKeyDraft]         = useState("");
+  const [leetifyKey, setLeetifyKey]     = useState("");
+  const [leetifyDraft, setLeetifyDraft] = useState("");
   const [activeAccount, setActiveAccount] = useState(null); // login name of currently active Steam account
   const [search, setSearch]               = useState("");
   const [activeFilters, setActiveFilters] = useState(() => readFilterCookie());
@@ -30,8 +37,8 @@ export default function App() {
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [watchlist, setWatchlist]         = useState([]);
   const [watchChecking, setWatchChecking] = useState(false);
-  const [draggingId, setDraggingId]       = useState(null);
-  const [dragOverId, setDragOverId]       = useState(null);
+  const [activeId, setActiveId]               = useState(null);
+  const [activeSectionId, setActiveSectionId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [collapsedSections, setCollapsedSections] = useState(() => {
     try { return JSON.parse(localStorage.getItem("steamgr_collapsed") || "{}"); }
@@ -74,6 +81,21 @@ export default function App() {
     const id = setInterval(fetchAccounts, 30_000);
     return () => clearInterval(id);
   }, [fetchAccounts]);
+
+  // ── Leetify background check ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!leetifyKey) return;
+    const candidates = accounts.filter(a => a.steamId64 && !(a.id in leetifyCache));
+    if (!candidates.length) return;
+    candidates.forEach(a => {
+      fetch(`/api/accounts/${a.id}/leetify`)
+        .then(r => r.json())
+        .then(d => {
+          setLeetifyCache(prev => ({ ...prev, [a.id]: !!(d?.found) }));
+        })
+        .catch(() => {});
+    });
+  }, [accounts, leetifyKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watchlist ──
   const fetchWatchlist = useCallback(async () => {
@@ -143,6 +165,8 @@ export default function App() {
     fetch("/api/config").then(r => r.json()).then(cfg => {
       setApiKey(cfg.steamApiKey || "");
       setKeyDraft(cfg.steamApiKey || "");
+      setLeetifyKey(cfg.leetifyApiKey || "");
+      setLeetifyDraft(cfg.leetifyApiKey || "");
       if (cfg.lastRefreshed) setLastRefreshed(new Date(cfg.lastRefreshed));
     }).catch(() => {});
   }, []);
@@ -165,6 +189,18 @@ export default function App() {
       body: JSON.stringify({ steamApiKey: keyDraft.trim() }),
     });
     setApiKey(keyDraft.trim());
+  }
+
+  async function handleSaveLeetifyKey() {
+    const trimmed = leetifyDraft.trim();
+    await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leetifyApiKey: trimmed }),
+    });
+    setLeetifyKey(trimmed);
+    // Re-check all accounts against the new key
+    setLeetifyCache({});
   }
 
   async function handleClearCache() {
@@ -361,6 +397,26 @@ export default function App() {
       order.splice(to, 0, draggedId);
       return { ...prev, customOrder: order };
     });
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  function handleDragStart({ active }) {
+    setActiveId(active.id);
+  }
+
+  function handleDragEnd({ active, over }) {
+    setActiveId(null);
+    if (!over || active.id === over.id) return;
+    const sectionOf = id =>
+      visibleFavorites.some(a => a.id === id) ? "fav" :
+      visibleOk.some(a => a.id === id)        ? "ok"  :
+      visibleCooldown.some(a => a.id === id)  ? "cd"  :
+      visibleBanned.some(a => a.id === id)    ? "ban" : null;
+    if (sectionOf(active.id) !== sectionOf(over.id)) return;
+    handleReorder(active.id, over.id);
   }
 
   const searched = useMemo(() => {
@@ -685,71 +741,106 @@ export default function App() {
 
             {(() => {
               const focusedId = allVisible[focusedIdx]?.id;
-              const draggingSection =
-                visibleFavorites.some(a => a.id === draggingId) ? "Favorites"   :
-                visibleOk.some(a => a.id === draggingId)        ? "Available"   :
-                visibleCooldown.some(a => a.id === draggingId)  ? "On Cooldown" :
-                visibleBanned.some(a => a.id === draggingId)    ? "Banned"      : null;
+              const isDraggable = settings.sortField === "custom";
+              const cardStrategy = settings.cardLayout === "list" ? verticalListSortingStrategy : rectSortingStrategy;
+              const activeAcc = activeId ? accounts.find(a => a.id === activeId) : null;
 
-              const cardProps = (a, sectionKey, extra = {}) => {
-                const isOver = dragOverId === a.id && draggingId !== a.id;
-                return {
-                  key: a.id,
-                  acc: a,
-                  layout: settings.cardLayout,
-                  active: activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase(),
-                  isFocused: focusedId === a.id,
-                  showSteamId: settings.showSteamId,
-                  showLoginName: settings.showLoginName,
-                  showPlaytime: settings.showPlaytime,
-                  showPrimeBadge: settings.showPrimeBadge,
-                  showPremierBadge: settings.showPremierBadge,
-                  onEdit: () => setModal({ mode: "edit", acc: a }),
-                  onRefresh: handleRefresh,
-                  onSwitch: handleSwitch,
-                  onHistory: () => setHistoryAcc(a),
-                  onToggleDrop: handleToggleDrop,
-                  onDropHistory: () => setDropHistoryAcc(a),
-                  onSetCooldown: handleSetCooldown,
-                  onClearCooldown: handleClearCooldown,
-                  onToggleFavorite: handleToggleFavorite,
-                  draggable: settings.sortField === "custom",
-                  onReorder: handleReorder,
-                  onDragStarted: setDraggingId,
-                  onDragEntered: setDragOverId,
-                  onDragEnded: () => { setDraggingId(null); setDragOverId(null); },
-                  isDragging: draggingId === a.id,
-                  isDropTarget:    isOver && draggingSection === sectionKey,
-                  isForbiddenDrop: isOver && draggingSection !== null && draggingSection !== sectionKey,
-                  ...extra,
-                };
-              };
-              return (<>
-                {visibleFavorites.length > 0 && (
-                  <Section title="Favorites" accent="#f9e2af" layout={settings.cardLayout} count={visibleFavorites.length}
-                    collapsed={!!collapsedSections["Favorites"]} onToggle={() => toggleSection("Favorites")}>
-                    {visibleFavorites.map(a => <AccountCard {...cardProps(a, "Favorites")} />)}
-                  </Section>
-                )}
-                {visibleOk.length > 0 && (
-                  <Section title="Available" accent="var(--green)" layout={settings.cardLayout} count={visibleOk.length}
-                    collapsed={!!collapsedSections["Available"]} onToggle={() => toggleSection("Available")}>
-                    {visibleOk.map(a => <AccountCard {...cardProps(a, "Available")} />)}
-                  </Section>
-                )}
-                {visibleCooldown.length > 0 && (
-                  <Section title="On Cooldown" accent="var(--yellow)" layout={settings.cardLayout} count={visibleCooldown.length}
-                    collapsed={!!collapsedSections["On Cooldown"]} onToggle={() => toggleSection("On Cooldown")}>
-                    {visibleCooldown.map(a => <AccountCard {...cardProps(a, "On Cooldown")} />)}
-                  </Section>
-                )}
-                {visibleBanned.length > 0 && (
-                  <Section title="Banned" accent="var(--red)" layout={settings.cardLayout} count={visibleBanned.length}
-                    collapsed={!!collapsedSections["Banned"]} onToggle={() => toggleSection("Banned")}>
-                    {visibleBanned.map(a => <AccountCard {...cardProps(a, "Banned", { banned: true })} />)}
-                  </Section>
-                )}
-              </>);
+              const DEFAULT_SECTION_ORDER = ["Favorites", "Available", "On Cooldown", "Banned"];
+              const sectionOrder = settings.sectionOrder || DEFAULT_SECTION_ORDER;
+
+              const allSections = [
+                { key: "Favorites",   accent: "#f9e2af",        list: visibleFavorites, extra: {} },
+                { key: "Available",   accent: "var(--green)",   list: visibleOk,        extra: {} },
+                { key: "On Cooldown", accent: "var(--yellow)",  list: visibleCooldown,  extra: {} },
+                { key: "Banned",      accent: "var(--red)",     list: visibleBanned,    extra: { banned: true } },
+              ].sort((a, b) => sectionOrder.indexOf(a.key) - sectionOrder.indexOf(b.key));
+
+              const cardProps = (a, extra = {}) => ({
+                key: a.id,
+                acc: a,
+                layout: settings.cardLayout,
+                active: activeAccount && a.name.toLowerCase() === activeAccount.toLowerCase(),
+                isFocused: focusedId === a.id,
+                showSteamId: settings.showSteamId,
+                showLoginName: settings.showLoginName,
+                showPlaytime: settings.showPlaytime,
+                showPrimeBadge: settings.showPrimeBadge,
+                showPremierBadge: settings.showPremierBadge,
+                onEdit: () => setModal({ mode: "edit", acc: a }),
+                onRefresh: handleRefresh,
+                onSwitch: handleSwitch,
+                onHistory: () => setHistoryAcc(a),
+                onToggleDrop: handleToggleDrop,
+                onDropHistory: () => setDropHistoryAcc(a),
+                onSetCooldown: handleSetCooldown,
+                onClearCooldown: handleClearCooldown,
+                onToggleFavorite: handleToggleFavorite,
+                onStats: setStatsAcc,
+                hasLeetify: !!leetifyCache[a.id],
+                draggable: isDraggable,
+                ...extra,
+              });
+
+              const activeSec = activeSectionId ? allSections.find(s => s.key === activeSectionId) : null;
+
+              return (
+                // Outer context — section reordering only.
+                // Section's useSortable sees this as the nearest ancestor ✓
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={({ active }) => setActiveSectionId(active.id)}
+                  onDragEnd={({ active, over }) => {
+                    setActiveSectionId(null);
+                    if (!over || active.id === over.id) return;
+                    setSettings(prev => {
+                      const order = [...(prev.sectionOrder || DEFAULT_SECTION_ORDER)];
+                      const from = order.indexOf(active.id);
+                      const to   = order.indexOf(over.id);
+                      if (from === -1 || to === -1) return prev;
+                      order.splice(from, 1);
+                      order.splice(to, 0, active.id);
+                      return { ...prev, sectionOrder: order };
+                    });
+                  }}
+                >
+                  <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+                    {allSections.map(({ key, accent, list, extra }) =>
+                      list.length > 0 && (
+                        // Inner context is a CHILD of Section, not a parent.
+                        // AccountCard's useSortable sees this inner context ✓
+                        <Section key={key} id={key} title={key} accent={accent} layout={settings.cardLayout}
+                          count={list.length} collapsed={!!collapsedSections[key]} onToggle={() => toggleSection(key)}>
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                          >
+                            <SortableContext items={list.map(a => a.id)} strategy={cardStrategy}>
+                              {list.map(a => <AccountCard {...cardProps(a, extra)} />)}
+                            </SortableContext>
+                            <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+                              {activeAcc ? <AccountCard {...cardProps(activeAcc)} draggable={false} /> : null}
+                            </DragOverlay>
+                          </DndContext>
+                        </Section>
+                      )
+                    )}
+                  </SortableContext>
+                  {/* Section drag overlay — just the title pill, not the cards */}
+                  <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+                    {activeSec ? (
+                      <div className={styles.sectionDragOverlay}>
+                        <span className={styles.sectionTitle} style={{ color: activeSec.accent }}>
+                          {activeSec.key}
+                          <span className={styles.sectionCount}>({activeSec.list.length})</span>
+                        </span>
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </DndContext>
+              );
             })()}
           </>
         )}
@@ -773,6 +864,9 @@ export default function App() {
       {dropHistoryAcc && (
         <DropHistoryModal acc={dropHistoryAcc} onClose={() => setDropHistoryAcc(null)} />
       )}
+      {statsAcc && (
+        <LeetifyModal acc={statsAcc} onClose={() => setStatsAcc(null)} />
+      )}
       {watchlistOpen && (
         <WatchlistPanel
           watchlist={watchlist}
@@ -785,7 +879,9 @@ export default function App() {
       )}
       {settingsOpen && (
         <SettingsModal settings={settings} onChange={updateSetting} onClose={() => setSettingsOpen(false)}
-          keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey} onClearCache={handleClearCache} />
+          keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey}
+          leetifyDraft={leetifyDraft} onLeetifyDraftChange={setLeetifyDraft} onSaveLeetifyKey={handleSaveLeetifyKey} leetifyKey={leetifyKey}
+          onClearCache={handleClearCache} />
       )}
       <div className={styles.toastContainer}>
         {toasts.map(t => (

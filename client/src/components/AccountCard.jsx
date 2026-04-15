@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
-import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon, NoteIcon, DragHandleIcon, LeetifyIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "../cooldown.js";
 
-export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, onReorder, onDragStarted, onDragEntered, onDragEnded, isDragging = false, isDropTarget = false, isForbiddenDrop = false }) {
+export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, onStats, hasLeetify = false, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false }) {
   const expired  = isExpired(acc.expires);
   const hasCd    = acc.expires && !expired;
   const rem      = hasCd ? remainingStr(acc.expires) : null;
@@ -17,6 +20,13 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const [ctxPos, setCtxPos]         = useState(null);
   const [idCopied, setIdCopied]     = useState(false);
   const ctxRef = useRef(null);
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: acc.id, disabled: !draggable });
+
+  const sortableStyle = draggable ? {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } : {};
 
   const weekStart      = getCurrentWeekStart();
   const drops          = acc.weeklyDrops || [];
@@ -34,26 +44,6 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [ctxPos]);
-
-  const dragProps = draggable ? {
-    draggable: true,
-    onDragStart(e) {
-      e.dataTransfer.setData("text/plain", acc.id);
-      e.dataTransfer.effectAllowed = "move";
-      setTimeout(() => onDragStarted(acc.id), 0);
-    },
-    onDragEnter(e) {
-      if (e.dataTransfer.types.includes("text/plain")) onDragEntered(acc.id);
-    },
-    onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = isForbiddenDrop ? "none" : "move"; },
-    onDrop(e) {
-      e.preventDefault();
-      if (isForbiddenDrop) return;
-      const draggedId = e.dataTransfer.getData("text/plain");
-      if (draggedId && draggedId !== acc.id) onReorder(draggedId, acc.id);
-    },
-    onDragEnd() { onDragEnded(); },
-  } : {};
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -92,6 +82,30 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     setSwitching(true);
     await onSwitch(acc.id);
     setSwitching(false);
+  }
+
+  // Notes tooltip (portal, shows full note on hover)
+  function NotesChip({ note }) {
+    const ref = useRef(null);
+    const [tip, setTip] = useState(null);
+    function handleEnter() {
+      const r = ref.current?.getBoundingClientRect();
+      if (r) setTip({ top: r.bottom + 6, left: r.left });
+    }
+    return (
+      <>
+        <span ref={ref} className={styles.cardNotes}
+              onMouseEnter={handleEnter} onMouseLeave={() => setTip(null)}>
+          <NoteIcon size={11} />{note}
+        </span>
+        {tip && createPortal(
+          <div className={styles.cardNotesTooltip} style={{ top: tip.top, left: tip.left }}>
+            {note}
+          </div>,
+          document.body
+        )}
+      </>
+    );
   }
 
   // Shared fragments reused in both layouts
@@ -180,11 +194,23 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
     </div>
   );
 
-  const baseClass = `${styles.card} ${hasCd ? styles.cardCd : ""} ${banned ? styles.cardBanned : ""} ${active ? styles.cardActive : ""} ${isFocused ? styles.cardFocused : ""} ${isDragging ? styles.cardDragging : ""} ${isDropTarget ? styles.cardDragOver : ""} ${isForbiddenDrop ? styles.cardForbiddenDrop : ""}`;
+  const baseClass = `${styles.card} ${hasCd ? styles.cardCd : ""} ${banned ? styles.cardBanned : ""} ${active ? styles.cardActive : ""} ${isFocused ? styles.cardFocused : ""} ${draggable && isDragging ? styles.cardDragging : ""}`;
 
   if (layout === "list") {
     return (
-      <div className={`${baseClass} ${styles.cardList}`} data-account-id={acc.id} onContextMenu={handleContextMenu} {...dragProps}>
+      <div
+        ref={draggable ? setNodeRef : undefined}
+        className={`${baseClass} ${styles.cardList}`}
+        style={sortableStyle}
+        data-account-id={acc.id}
+        onContextMenu={handleContextMenu}
+        {...(draggable ? attributes : {})}
+      >
+        {draggable && (
+          <div className={styles.dragHandle} title="Drag to reorder" {...listeners}>
+            <DragHandleIcon size={16} />
+          </div>
+        )}
         {acc.avatar && (acc.steamId64
           ? <a href={`https://steamcommunity.com/profiles/${acc.steamId64}`} target="_blank" rel="noreferrer"><img src={acc.avatar} alt="" className={styles.avatar} /></a>
           : <img src={acc.avatar} alt="" className={styles.avatar} />
@@ -200,7 +226,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
               {idCopied ? <><CheckIcon size={10} /> Copied!</> : <><CopyIcon size={10} /> {acc.steamId64}</>}
             </span>
           )}
-          {acc.notes && <span className={styles.cardNotes}>{acc.notes}</span>}
+          {acc.notes && <NotesChip note={acc.notes} />}
           {badgesEl}
         </div>
         {statusEl}
@@ -242,6 +268,11 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   {switching ? <><RefreshIcon size={14} /> Switching…</> : <><SwitchIcon size={14} /> Switch</>}
                 </button>
               )}
+              {hasLeetify && onStats && (
+                <button className={styles.statsBtn} onClick={() => onStats(acc)} title="Leetify Stats">
+                  <LeetifyIcon size={14} />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -257,7 +288,14 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
 
   // grid layout (vertical card)
   return (
-    <div className={baseClass} data-account-id={acc.id} onContextMenu={handleContextMenu} {...dragProps}>
+    <div
+      ref={draggable ? setNodeRef : undefined}
+      className={`${baseClass} ${draggable ? styles.cardDraggable : ""}`}
+      style={sortableStyle}
+      data-account-id={acc.id}
+      onContextMenu={handleContextMenu}
+      {...(draggable ? { ...attributes, ...listeners } : {})}
+    >
       <div className={styles.cardTop}>
         {acc.avatar && (acc.steamId64
           ? <a href={`https://steamcommunity.com/profiles/${acc.steamId64}`} target="_blank" rel="noreferrer"><img src={acc.avatar} alt="" className={styles.avatar} /></a>
@@ -274,6 +312,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
               {idCopied ? <><CheckIcon size={10} /> Copied!</> : <><CopyIcon size={10} /> {acc.steamId64}</>}
             </span>
           )}
+          {acc.notes && <NotesChip note={acc.notes} />}
         </div>
       </div>
       {badgesEl}
@@ -315,6 +354,11 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   title={!acc.hasPassword ? "No password saved — add one in Edit to enable switching" : undefined}
                 >
                   {switching ? <><RefreshIcon size={13} /> Switching…</> : <><SwitchIcon size={13} /> Switch</>}
+                </button>
+              )}
+              {hasLeetify && onStats && (
+                <button className={`${styles.cardFooterBtn} ${styles.cardFooterBtnStats}`} onClick={() => onStats(acc)} title="Leetify Stats">
+                  <LeetifyIcon size={13} />
                 </button>
               )}
             </>

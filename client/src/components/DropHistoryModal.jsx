@@ -22,28 +22,30 @@ export default function DropHistoryModal({ acc, onClose }) {
           </span>
           <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
-        {drops.length === 0 ? (
-          <p className={styles.empty} style={{ margin: "20px 0" }}>No drops recorded yet.</p>
-        ) : (
-          <div className={styles.historyList}>
-            {drops.map((entry, i) => {
-              const isCurrent = entry.weekStart === currentWeek;
-              return (
-                <div key={i} className={`${styles.historyRow} ${isCurrent ? styles.historyRowDrop : ""}`}>
-                  <div className={styles.historyDates}>
-                    <span>{fmtWeek(entry.weekStart)}</span>
+        <div className={styles.modalScrollBody}>
+          {drops.length === 0 ? (
+            <p className={styles.empty} style={{ margin: "20px 0" }}>No drops recorded yet.</p>
+          ) : (
+            <div className={styles.historyList}>
+              {drops.map((entry, i) => {
+                const isCurrent = entry.weekStart === currentWeek;
+                return (
+                  <div key={i} className={`${styles.historyRow} ${isCurrent ? styles.historyRowDrop : ""}`}>
+                    <div className={styles.historyDates}>
+                      <span>{fmtWeek(entry.weekStart)}</span>
+                    </div>
+                    <div className={styles.historyStatus}>
+                      {isCurrent
+                        ? <Badge color="var(--green)" bg="color-mix(in srgb, var(--green) 12%, transparent)">This week</Badge>
+                        : <Badge color="var(--dim)" bg="var(--card)">Collected</Badge>
+                      }
+                    </div>
                   </div>
-                  <div className={styles.historyStatus}>
-                    {isCurrent
-                      ? <Badge color="var(--green)" bg="color-mix(in srgb, var(--green) 12%, transparent)">This week</Badge>
-                      : <Badge color="var(--dim)" bg="var(--card)">Collected</Badge>
-                    }
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

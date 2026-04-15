@@ -43,20 +43,23 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* Base form controls */
+/* Base form controls — MD3 Outlined Text Field */
 input, select {
   font-family: var(--sans);
   font-size: 14px;
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 10px 14px;
   width: 100%;
   outline: none;
   transition: border-color var(--dur-short) var(--motion-standard);
 }
-input:focus { border-color: var(--accent); }
+input:focus, select:focus {
+  border-color: var(--accent);
+  border-width: 2px;
+}
 input::placeholder { color: var(--dim); }
 
 button {

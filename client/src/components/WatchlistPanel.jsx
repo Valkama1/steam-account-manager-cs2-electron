@@ -69,7 +69,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
               </button>
             ))}
           </div>
-          <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value)}>
+          <select className={styles.watchlistSortSelect} value={sort} onChange={e => setSort(e.target.value)}>
             <option value="added">Date added</option>
             <option value="name">Name</option>
             <option value="status">Status</option>

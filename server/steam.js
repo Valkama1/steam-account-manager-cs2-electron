@@ -277,6 +277,143 @@ function setSteamAutoLogin(steamDir, steamId64) {
   return true;
 }
 
+// ── Leetify ───────────────────────────────────────────────────────────────────
+
+function fetchLeetifyProfile(steamId64) {
+  return new Promise((resolve) => {
+    const { leetifyApiKey } = readConfig();
+    if (!leetifyApiKey || !steamId64) return resolve(null);
+    const url = `https://api-public.cs-prod.leetify.com/v3/profile?steam64_id=${steamId64}`;
+    const req = https.get(url, {
+      headers: { "User-Agent": "Mozilla/5.0", "Authorization": `Bearer ${leetifyApiKey}` },
+    }, (res) => {
+      let data = "";
+      res.on("data", chunk => data += chunk);
+      res.on("end", () => {
+        console.log(`[leetify] status=${res.statusCode} len=${data.length} preview=${data.slice(0, 120)}`);
+        if (res.statusCode === 404 || res.statusCode === 403) return resolve({ found: false });
+        if (res.statusCode !== 200) { console.log(`[leetify] unexpected status ${res.statusCode}`); return resolve(null); }
+        try {
+          const p = JSON.parse(data);
+          const rating = p.rating || {};
+          const stats  = p.stats  || {};
+
+          console.log(`[leetify] rating keys:`, JSON.stringify(rating));
+          console.log(`[leetify] ranks:`, JSON.stringify(p.ranks));
+
+          // aim/positioning/utility are 0–100 percentile scores (already correct)
+          // ct_leetify/t_leetify/clutch/opening are tiny decimals — multiply ×100 to get
+          // the same "+3.82 / +2.56 / +11.87 / +1.84" values Leetify shows in their UI
+          const aimR  = rating.aim         ?? null;
+          const posR  = rating.positioning ?? null;
+          const utilR = rating.utility     ?? null;
+
+          const ctR      = rating.ct_leetify != null ? rating.ct_leetify * 100 : null;
+          const tR       = rating.t_leetify  != null ? rating.t_leetify  * 100 : null;
+          const clutchR  = rating.clutch     != null ? rating.clutch     * 100 : null;
+          const openingR = rating.opening    != null ? rating.opening    * 100 : null;
+
+          // Overall Leetify Rating = average of CT and T (matches what Leetify displays)
+          const overallRating = ctR != null && tR != null
+            ? parseFloat(((ctR + tR) / 2).toFixed(2))
+            : null;
+
+          resolve({
+            found: true,
+            name:           p.name             ?? null,
+            leetifyRating:  overallRating,
+            ctRating:       ctR,
+            tRating:        tR,
+            aimRating:      aimR,
+            posRating:      posR,
+            utilityRating:  utilR,
+            clutchRating:   clutchR,
+            openingRating:  openingR,
+            winRate:        p.winrate != null
+              ? (p.winrate > 1 ? p.winrate.toFixed(1) : (p.winrate * 100).toFixed(1))
+              : null,
+            totalMatches:   p.total_matches     ?? null,
+            hsPct:          stats.accuracy_head != null
+              ? (stats.accuracy_head > 1
+                  ? stats.accuracy_head.toFixed(1)
+                  : (stats.accuracy_head * 100).toFixed(1))
+              : null,
+            reactionMs:     stats.reaction_time_ms != null ? Math.round(stats.reaction_time_ms) : null,
+            premierRank:    p.ranks?.premier?.rank_value ?? null,
+            recentMatches:  (p.recent_matches || []).slice(0, 8).map(m => ({
+              id:           m.id,
+              map:          m.map_name   ?? "Unknown",
+              outcome:      m.outcome    ?? null,
+              rating:       m.leetify_rating != null ? m.leetify_rating * 100 : null,
+              finishedAt:   m.finished_at    ?? null,
+              score:        Array.isArray(m.score) ? m.score : null,
+            })),
+          });
+        } catch (e) { console.log(`[leetify] parse error: ${e.message}`); resolve(null); }
+      });
+    });
+    req.on("error", (e) => { console.log(`[leetify] error: ${e.message}`); resolve(null); });
+    req.setTimeout(10000, () => { console.log(`[leetify] timeout`); req.destroy(); resolve(null); });
+  });
+}
+
+// ── CS2 stats ─────────────────────────────────────────────────────────────────
+
+function fetchCS2Stats(steamId64) {
+  return new Promise((resolve) => {
+    const { steamApiKey } = readConfig();
+    if (!steamApiKey || !steamId64) return resolve(null);
+    const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/?appid=730&key=${steamApiKey}&steamid=${steamId64}`;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let data = "";
+      res.on("data", chunk => data += chunk);
+      res.on("end", () => {
+        if (res.statusCode === 403) return resolve({ private: true });
+        if (res.statusCode !== 200) { console.log(`[cs2stats] ${res.statusCode}`); return resolve(null); }
+        try {
+          const raw = JSON.parse(data)?.playerstats?.stats ?? [];
+          const s = {};
+          for (const { name, value } of raw) s[name] = value;
+
+          const kills   = s.total_kills          || 0;
+          const deaths  = s.total_deaths         || 0;
+          const matches = s.total_matches_played || 0;
+          const mWins   = s.total_matches_won    || 0;
+          const rWins   = s.total_wins           || 0;
+          const rounds  = s.total_rounds_played  || 0;
+          const hs      = s.total_headshot_kills || 0;
+          const fired   = s.total_shots_fired    || 0;
+          const hit     = s.total_shots_hit      || 0;
+
+          resolve({
+            kd:          deaths  > 0 ? (kills  / deaths).toFixed(2)  : kills > 0 ? "∞" : "0.00",
+            matchWinPct: matches > 0 ? ((mWins  / matches) * 100).toFixed(1) : null,
+            roundWinPct: rounds  > 0 ? ((rWins  / rounds)  * 100).toFixed(1) : null,
+            hsPct:       kills   > 0 ? ((hs     / kills)   * 100).toFixed(1) : null,
+            accuracy:    fired   > 0 ? ((hit    / fired)   * 100).toFixed(1) : null,
+            totalKills:   kills,
+            totalDeaths:  deaths,
+            totalMatches: matches,
+            totalWins:    mWins,
+            totalRounds:  rounds,
+            totalMVPs:    s.total_mvps || 0,
+            timePlayed:   Math.round((s.total_time_played || 0) / 3600),
+            lastMatch: {
+              kills:  s.last_match_kills   || 0,
+              deaths: s.last_match_deaths  || 0,
+              damage: s.last_match_damage  || 0,
+              hs:     s.last_match_hs_kills || 0,
+              wins:   s.last_match_wins    || 0,
+              rounds: s.last_match_rounds  || 0,
+              mvps:   s.last_match_mvps    || 0,
+            },
+          });
+        } catch (e) { console.log(`[cs2stats] parse error: ${e.message}`); resolve(null); }
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
 // ── Batch Steam API helpers ───────────────────────────────────────────────────
 // Both endpoints accept up to 100 steamIds per call.
 
@@ -332,4 +469,4 @@ function fetchPlayerSummariesBatch(steamId64s) {
   ).then(results => Object.assign({}, ...results));
 }
 
-module.exports = { fetchSteamProfile, fetchBanData, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchSteamFields, getSteamPath, killSteam, setSteamAutoLogin };
+module.exports = { fetchSteamProfile, fetchBanData, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchSteamFields, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin };

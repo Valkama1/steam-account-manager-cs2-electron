@@ -32,6 +32,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
   const [password, setPassword]     = useState("");
   const [profileUrl, setProfileUrl] = useState("");
   const [cooldown, setCooldown]     = useState("");
+  const [cooldownType, setCooldownType] = useState(null);
   const [formErr, setFormErr]       = useState("");
   const [busy, setBusy]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -62,6 +63,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
       ...(profileUrl.trim() && { profileUrl: profileUrl.trim() }),
       ...(expires !== undefined && { expires }),
       ...(expires != null && cooldown.trim() && { cooldownInput: cooldown.trim() }),
+      ...(expires != null && cooldownType && { cooldownType }),
     };
 
     if (isEdit) {
@@ -80,92 +82,114 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
           <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <label className={styles.label}>Login / Name</label>
-          <input value={name} onChange={e => setName(e.target.value)}
-                 placeholder="e.g. 3039554938a" autoComplete="off" autoFocus />
+        <div className={styles.modalScrollBody}>
+          <form onSubmit={handleSubmit} className={styles.form}>
+            <label className={styles.label}>Login / Name</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+                   placeholder="e.g. 3039554938a" autoComplete="off" autoFocus />
 
-          <label className={styles.label}>Alias <span>(optional)</span></label>
-          <input value={alias} onChange={e => setAlias(e.target.value)}
-                 placeholder="e.g. Gangster" autoComplete="off" />
+            <label className={styles.label}>Alias <span>(optional)</span></label>
+            <input value={alias} onChange={e => setAlias(e.target.value)}
+                   placeholder="e.g. Gangster" autoComplete="off" />
 
-          <div className={styles.toggleGroup}>
-            <Toggle label="CS2 Prime" subtitle="Prime status activated"
-              checked={prime} onChange={setPrime} icon={<PrimeIcon />} />
-            <Toggle label="Premier Ready" subtitle="Account is level 10+"
-              checked={premierReady} onChange={setPremierReady} icon={<PremierIcon />} />
-          </div>
+            <div className={styles.toggleGroup}>
+              <Toggle label="CS2 Prime" subtitle="Prime status activated"
+                checked={prime} onChange={setPrime} icon={<PrimeIcon />} />
+              <Toggle label="Premier Ready" subtitle="Account is level 10+"
+                checked={premierReady} onChange={setPremierReady} icon={<PremierIcon />} />
+            </div>
 
-          <label className={styles.label}>Premier Rating <span>(optional — e.g. 15250)</span></label>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <input
-              value={premierRating}
-              onChange={e => setPremierRating(e.target.value.replace(/\D/g, ""))}
-              placeholder="0 – 35000"
-              autoComplete="off"
-              style={{ flex: 1 }}
-            />
-            {premierRating.trim() !== "" && !isNaN(parseInt(premierRating, 10)) && (
-              <PremierRatingBadge rating={parseInt(premierRating, 10)} />
+            <label className={styles.label}>Premier Rating <span>(optional — e.g. 15250)</span></label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                value={premierRating}
+                onChange={e => setPremierRating(e.target.value.replace(/\D/g, ""))}
+                placeholder="0 – 35000"
+                autoComplete="off"
+                style={{ flex: 1 }}
+              />
+              {premierRating.trim() !== "" && !isNaN(parseInt(premierRating, 10)) && (
+                <PremierRatingBadge rating={parseInt(premierRating, 10)} />
+              )}
+            </div>
+
+            <label className={styles.label}>
+              Password <span>({isEdit ? (acc.hasPassword ? "stored — leave blank to keep" : "not set") : "optional"})</span>
+            </label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                   placeholder={isEdit && acc.hasPassword ? "••••••••" : "Steam password"} autoComplete="new-password" />
+
+            <label className={styles.label}>Notes <span>(optional)</span></label>
+            <input value={notes} onChange={e => setNotes(e.target.value)}
+                   placeholder="e.g. main, smurfing, gifted…" autoComplete="off" />
+
+            <label className={styles.label}>Steam Profile URL <span>(optional)</span></label>
+            <input value={profileUrl} onChange={e => setProfileUrl(e.target.value)}
+                   placeholder="steamcommunity.com/id/…" autoComplete="off" />
+
+            <label className={styles.label}>
+              {isEdit ? "New Cooldown" : "Cooldown"} <span>(optional{isEdit ? ", leave blank to keep current" : ""})</span>
+            </label>
+            <input value={cooldown} onChange={e => setCooldown(e.target.value)}
+                   placeholder="20h · 3d · 2w · 45m" autoComplete="off" />
+
+            {cooldown.trim() && (
+              <div className={styles.cdTypeRow}>
+                {[
+                  { value: "abandon",       label: "Abandon" },
+                  { value: "griefing",      label: "Griefing" },
+                  { value: "suspicious",    label: "Suspicious" },
+                  { value: "friendly_fire", label: "Friendly Fire" },
+                  { value: "other",         label: "Other" },
+                ].map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    className={`${styles.filterChip} ${cooldownType === t.value ? styles.filterChipOn : ""}`}
+                    style={{ "--chip-color": "var(--accent)" }}
+                    onClick={() => setCooldownType(prev => prev === t.value ? null : t.value)}
+                  >{t.label}</button>
+                ))}
+              </div>
             )}
-          </div>
 
-          <label className={styles.label}>
-            Password <span>({isEdit ? (acc.hasPassword ? "stored — leave blank to keep" : "not set") : "optional"})</span>
-          </label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                 placeholder={isEdit && acc.hasPassword ? "••••••••" : "Steam password"} autoComplete="new-password" />
+            {isEdit && acc.expires && !isExpired(acc.expires) && (
+              <p className={styles.cdNote}>Current: {remainingStr(acc.expires)} remaining</p>
+            )}
 
-          <label className={styles.label}>Notes <span>(optional)</span></label>
-          <input value={notes} onChange={e => setNotes(e.target.value)}
-                 placeholder="e.g. main, smurfing, gifted…" autoComplete="off" />
+            {formErr && <p className={styles.formErr}>{formErr}</p>}
 
-          <label className={styles.label}>Steam Profile URL <span>(optional)</span></label>
-          <input value={profileUrl} onChange={e => setProfileUrl(e.target.value)}
-                 placeholder="steamcommunity.com/id/…" autoComplete="off" />
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.cancelBtn} onClick={onClose}>Cancel</button>
+              <button type="submit" className={styles.addBtn} disabled={busy}>
+                {busy ? <><RefreshIcon size={14} /> Saving…</> : isEdit ? <><CheckIcon size={14} /> Save</> : <><PlusIcon size={14} /> Add Account</>}
+              </button>
+            </div>
 
-          <label className={styles.label}>
-            {isEdit ? "New Cooldown" : "Cooldown"} <span>(optional{isEdit ? ", leave blank to keep current" : ""})</span>
-          </label>
-          <input value={cooldown} onChange={e => setCooldown(e.target.value)}
-                 placeholder="20h · 3d · 2w · 45m" autoComplete="off" />
+            {!isEdit && (
+              <div className={styles.hint}>
+                <p>m = minutes &nbsp;·&nbsp; h = hours</p>
+                <p>d = days &nbsp;·&nbsp; w = weeks</p>
+              </div>
+            )}
+          </form>
 
-          {isEdit && acc.expires && !isExpired(acc.expires) && (
-            <p className={styles.cdNote}>Current: {remainingStr(acc.expires)} remaining</p>
-          )}
-
-          {formErr && <p className={styles.formErr}>{formErr}</p>}
-
-          <div className={styles.modalActions}>
-            <button type="button" className={styles.cancelBtn} onClick={onClose}>Cancel</button>
-            <button type="submit" className={styles.addBtn} disabled={busy}>
-              {busy ? <><RefreshIcon size={14} /> Saving…</> : isEdit ? <><CheckIcon size={14} /> Save</> : <><PlusIcon size={14} /> Add Account</>}
-            </button>
-          </div>
-
-          {!isEdit && (
-            <div className={styles.hint}>
-              <p>m = minutes &nbsp;·&nbsp; h = hours</p>
-              <p>d = days &nbsp;·&nbsp; w = weeks</p>
+          {isEdit && (
+            <div className={styles.dangerZone}>
+              {confirmDelete ? (
+                <>
+                  <span className={styles.dangerLabel}>Are you sure?</span>
+                  <button className={styles.dangerConfirm} onClick={() => onDelete(acc.id)}><DeleteIcon size={13} /> Delete</button>
+                  <button className={styles.dangerCancel} onClick={() => setConfirmDelete(false)}>Cancel</button>
+                </>
+              ) : (
+                <button className={styles.dangerTrigger} onClick={() => setConfirmDelete(true)}>
+                  <DeleteIcon size={13} /> Delete account
+                </button>
+              )}
             </div>
           )}
-        </form>
-
-        {isEdit && (
-          <div className={styles.dangerZone}>
-            {confirmDelete ? (
-              <>
-                <span className={styles.dangerLabel}>Are you sure?</span>
-                <button className={styles.dangerConfirm} onClick={() => onDelete(acc.id)}><DeleteIcon size={13} /> Delete</button>
-                <button className={styles.dangerCancel} onClick={() => setConfirmDelete(false)}>Cancel</button>
-              </>
-            ) : (
-              <button className={styles.dangerTrigger} onClick={() => setConfirmDelete(true)}>
-                <DeleteIcon size={13} /> Delete account
-              </button>
-            )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

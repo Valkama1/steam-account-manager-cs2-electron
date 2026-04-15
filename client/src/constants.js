@@ -71,6 +71,7 @@ export const DEFAULT_SETTINGS = {
   sortField: "createdAt",
   sortDir: "desc",
   customOrder: [],
+  sectionOrder: ["Favorites", "Available", "On Cooldown", "Banned"],
   themeMode: "dark",
   colors: { dark: { ...CATPPUCCIN_MOCHA }, light: { ...CATPPUCCIN_LATTE }, oled: { ...OLED_DARK }, "material-dark": { ...MATERIAL_DARK }, "material-light": { ...MATERIAL_LIGHT } },
   autoRefreshInterval: 0,

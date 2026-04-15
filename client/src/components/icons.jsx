@@ -10,6 +10,28 @@ const Icon = ({ size, children, style }) => (
   </svg>
 );
 
+export function LeetifyIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 160 160" fill="none" style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}>
+      <path fill="currentColor" fillOpacity="0.5" d="M61.8316 58.4014l7.2955-34.3824h81.9149c4.389 0 7.946 3.5635 7.946 7.9592 0 .5585-.059 1.1155-.175 1.6617l-20.021 93.9441c-1.044 4.897-5.363 8.397-10.361 8.397H95.7456l14.9964-69.8739c.738-3.4381-1.446-6.8243-4.878-7.5635a6.3497 6.3497 0 00-1.336-.1422z"/>
+      <path fill="currentColor" d="M52.811 64.2425a8.107 8.107 0 00-.107.436l-5.9366 27.5032c-.6182 2.8643 1.1986 5.6883 4.0581 6.3076a5.286 5.286 0 001.1194.1199h18.7043c2.9255 0 5.2971 2.3756 5.2971 5.3061 0 .3735-.0394.746-.1174 1.1112l-6.6182 30.9545H8.9577c-4.3883 0-7.9457-3.564-7.9457-7.959a7.97 7.97 0 01.1751-1.662l20.0216-93.9444c1.0436-4.8966 5.3622-8.3966 10.3608-8.3966h29.7291z"/>
+    </svg>
+  );
+}
+
+export function CrosshairIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="7" />
+      <line x1="12" y1="2"  x2="12" y2="5"  />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="2"  y1="12" x2="5"  y2="12" />
+      <line x1="19" y1="12" x2="22" y2="12" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 // ── Navigation / UI chrome ────────────────────────────────────────────────────
 
 export function CloseIcon({ size = 16 }) {
@@ -174,6 +196,27 @@ export function SettingsIcon({ size = 16 }) {
   return (
     <Icon size={size}>
       <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+    </Icon>
+  );
+}
+
+export function DragHandleIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <circle cx="9"  cy="6"  r="1.5" />
+      <circle cx="9"  cy="12" r="1.5" />
+      <circle cx="9"  cy="18" r="1.5" />
+      <circle cx="15" cy="6"  r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="15" cy="18" r="1.5" />
+    </Icon>
+  );
+}
+
+export function NoteIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
     </Icon>
   );
 }

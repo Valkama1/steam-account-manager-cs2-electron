@@ -51,7 +51,7 @@ export function SettingRow({ label, checked, onChange, hint }) {
   );
 }
 
-export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, onClearCache }) {
+export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, leetifyDraft, onLeetifyDraftChange, onSaveLeetifyKey, leetifyKey, onClearCache }) {
   const [tab, setTab] = useState("display");
   const [confirmClear, setConfirmClear] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
@@ -154,6 +154,25 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
                   className={styles.resetThemeBtn}
                   onClick={onSaveKey}
                   disabled={keyDraft === apiKey}
+                >Save</button>
+              </div>
+              <div className={styles.settingDivider} />
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Leetify API key
+                <InfoTip text="Optional. Enables Leetify stats on account cards. Get your key from your Leetify account settings." />
+              </div>
+              <div className={styles.apiKeyRow}>
+                <input
+                  className={styles.apiKeyInput}
+                  value={leetifyDraft}
+                  onChange={e => onLeetifyDraftChange(e.target.value)}
+                  placeholder="Paste key here…"
+                  type="password"
+                />
+                <button
+                  className={styles.resetThemeBtn}
+                  onClick={onSaveLeetifyKey}
+                  disabled={leetifyDraft === leetifyKey}
                 >Save</button>
               </div>
               <div className={styles.settingDivider} />

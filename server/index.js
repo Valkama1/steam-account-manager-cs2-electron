@@ -8,7 +8,7 @@ const { v4: uuidv4 }  = require("uuid");
 const { encryptPassword, decryptPassword, generateSteamGuardCode } = require("./crypto.js");
 const { readConfig, writeConfig }                                   = require("./config.js");
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
-const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
+const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
 
 const DEBUG = process.env.DEBUG === "1";
@@ -74,7 +74,7 @@ app.post("/api/accounts/refresh-all", async (_req, res) => {
 });
 
 app.post("/api/accounts", async (req, res) => {
-  const { name, alias, prime, premierReady, expires, cooldownInput, profileUrl, password } = req.body;
+  const { name, alias, prime, premierReady, expires, cooldownInput, cooldownType, profileUrl, password } = req.body;
   if (!name) return res.status(400).json({ error: "name is required" });
   const steamFields = await fetchSteamFields(profileUrl);
   const accounts = readDB();
@@ -83,7 +83,7 @@ app.post("/api/accounts", async (req, res) => {
     prime: !!prime, premierReady: !!premierReady,
     password: password ? encryptPassword(password) : null,
     expires: expires || null,
-    cooldownHistory: expires ? [{ input: cooldownInput || null, startedAt: new Date().toISOString(), expiresAt: expires }] : [],
+    cooldownHistory: expires ? [{ input: cooldownInput || null, type: cooldownType || null, startedAt: new Date().toISOString(), expiresAt: expires }] : [],
     ...steamFields,
     createdAt: new Date().toISOString(),
   };
@@ -126,16 +126,27 @@ app.post("/api/accounts/clear-cache", (_req, res) => {
   res.json(accounts.map(sanitize));
 });
 
+app.get("/api/accounts/:id/leetify", async (req, res) => {
+  const acc = readDB().find(a => a.id === req.params.id);
+  if (!acc) return res.status(404).json({ error: "not found" });
+  if (!acc.steamId64) return res.status(400).json({ error: "no_steam_id" });
+  console.log(`[leetify] checking steamId64=${acc.steamId64}`);
+  const profile = await fetchLeetifyProfile(acc.steamId64);
+  console.log(`[leetify] result:`, JSON.stringify(profile)?.slice(0, 200));
+  if (!profile) return res.status(502).json({ error: "leetify_error" });
+  res.json(profile);
+});
+
 app.patch("/api/accounts/:id", async (req, res) => {
   const accounts = readDB();
   const idx = accounts.findIndex(a => a.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
-  const { profileUrl, cooldownInput, ...rest } = req.body;
+  const { profileUrl, cooldownInput, cooldownType, ...rest } = req.body;
   if (rest.password !== undefined) {
     rest.password = rest.password ? encryptPassword(rest.password) : null;
   }
   if (rest.expires !== undefined && rest.expires !== null) {
-    const entry = { input: cooldownInput || null, startedAt: new Date().toISOString(), expiresAt: rest.expires };
+    const entry = { input: cooldownInput || null, type: cooldownType || null, startedAt: new Date().toISOString(), expiresAt: rest.expires };
     rest.cooldownHistory = [...(accounts[idx].cooldownHistory || []), entry];
   }
   const steamFields = profileUrl !== undefined ? await fetchSteamFields(profileUrl) : {};
