@@ -290,16 +290,12 @@ function fetchLeetifyProfile(steamId64) {
       let data = "";
       res.on("data", chunk => data += chunk);
       res.on("end", () => {
-        console.log(`[leetify] status=${res.statusCode} len=${data.length} preview=${data.slice(0, 120)}`);
         if (res.statusCode === 404 || res.statusCode === 403) return resolve({ found: false });
         if (res.statusCode !== 200) { console.log(`[leetify] unexpected status ${res.statusCode}`); return resolve(null); }
         try {
           const p = JSON.parse(data);
           const rating = p.rating || {};
           const stats  = p.stats  || {};
-
-          console.log(`[leetify] rating keys:`, JSON.stringify(rating));
-          console.log(`[leetify] ranks:`, JSON.stringify(p.ranks));
 
           // aim/positioning/utility are 0–100 percentile scores (already correct)
           // ct_leetify/t_leetify/clutch/opening are tiny decimals — multiply ×100 to get

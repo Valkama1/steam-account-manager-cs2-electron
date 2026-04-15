@@ -2,6 +2,7 @@ import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
 import { getCurrentWeekStart } from "../cooldown.js";
 import { CloseIcon } from "./icons.jsx";
+import ModalShell from "./ModalShell.jsx";
 
 function fmtWeek(weekStartIso) {
   const d = new Date(weekStartIso);
@@ -14,13 +15,13 @@ export default function DropHistoryModal({ acc, onClose }) {
   const drops = [...(acc.weeklyDrops || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
   const currentWeek = getCurrentWeekStart();
   return (
-    <div className={styles.overlay} onMouseDown={onClose}>
-      <div className={`${styles.modal} ${styles.modalWide}`} onMouseDown={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} className={styles.modalWide}>
+      {(close) => (<>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>
             Weekly Drops — {acc.alias || acc.profileName || acc.name}
           </span>
-          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
+          <button className={styles.modalClose} onClick={close}><CloseIcon size={14} /></button>
         </div>
         <div className={styles.modalScrollBody}>
           {drops.length === 0 ? (
@@ -46,7 +47,7 @@ export default function DropHistoryModal({ acc, onClose }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   );
 }

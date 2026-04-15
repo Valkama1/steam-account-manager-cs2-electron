@@ -8,6 +8,7 @@ const fs      = require("fs");
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sm-accounts-"));
 process.env.TEST_DB_PATH  = path.join(tmpDir, "accounts.json");
 process.env.TEST_KEY_PATH = path.join(tmpDir, ".key");
+process.env.DATA_DIR      = tmpDir;
 
 // Mock Steam API / HTTP calls so tests run offline
 jest.mock("https", () => ({ get: jest.fn() }));
@@ -48,6 +49,15 @@ describe("GET /api/accounts", () => {
     const res = await request(app).get("/api/accounts");
     expect(res.body[0].password).toBeUndefined();
     expect(res.body[0].hasPassword).toBe(true);
+  });
+
+  test("never exposes the sharedSecret field", async () => {
+    // Write directly to DB to simulate an account with a sharedSecret stored
+    fs.writeFileSync(process.env.TEST_DB_PATH, JSON.stringify([
+      { id: "x", name: "alice", sharedSecret: "AABBCCDDEE==" }
+    ]));
+    const res = await request(app).get("/api/accounts");
+    expect(res.body[0].sharedSecret).toBeUndefined();
   });
 });
 

@@ -2,6 +2,7 @@ const fs   = require("fs");
 const path = require("path");
 const { v4: uuidv4 }               = require("uuid");
 const { fetchSteamProfile, fetchBanData, fetchBanDataBatch } = require("./steam.js");
+const { addNotification } = require("./notifications.js");
 
 const DATA_DIR       = process.env.DATA_DIR || __dirname;
 const WATCHLIST_PATH = path.join(DATA_DIR, "watchlist.json");
@@ -83,6 +84,9 @@ async function checkAllBans() {
       entry.baselineVacBanned = bans.vacBanned;
       entry.baselineGameBans  = bans.gameBans;
       console.log(`[watchlist] new ban detected: ${entry.profileName} (${entry.steamId64})`);
+      const name = entry.profileName || entry.steamId64;
+      if (newVac)      addNotification({ type: "vac_ban",  source: "watchlist", accountName: name, steamId64: entry.steamId64 });
+      if (newGameBans) addNotification({ type: "game_ban", source: "watchlist", accountName: name, steamId64: entry.steamId64 });
     }
   }
 

@@ -7,7 +7,7 @@ import Badge from "./Badge.jsx";
 import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon, NoteIcon, DragHandleIcon, LeetifyIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "../cooldown.js";
 
-export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, onStats, hasLeetify = false, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false }) {
+export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, onStats, hasLeetify = false, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, isDragOverlay = false }) {
   const expired  = isExpired(acc.expires);
   const hasCd    = acc.expires && !expired;
   const rem      = hasCd ? remainingStr(acc.expires) : null;
@@ -206,8 +206,12 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
         onContextMenu={handleContextMenu}
         {...(draggable ? attributes : {})}
       >
-        {draggable && (
-          <div className={styles.dragHandle} title="Drag to reorder" {...listeners}>
+        {(draggable || isDragOverlay) && (
+          <div
+            className={`${styles.dragHandle} ${isDragOverlay || isDragging ? styles.dragHandleVisible : ""}`}
+            title="Drag to reorder"
+            {...(draggable ? listeners : {})}
+          >
             <DragHandleIcon size={16} />
           </div>
         )}
@@ -268,19 +272,22 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   {switching ? <><RefreshIcon size={14} /> Switching…</> : <><SwitchIcon size={14} /> Switch</>}
                 </button>
               )}
-              {hasLeetify && onStats && (
-                <button className={styles.statsBtn} onClick={() => onStats(acc)} title="Leetify Stats">
-                  <LeetifyIcon size={14} />
-                </button>
-              )}
             </>
           )}
         </div>
-        <button
-          className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
-          onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
-          title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
-        >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+          {hasLeetify && onStats && (
+            <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); onStats(acc); }} title="Leetify Stats">
+              <LeetifyIcon size={13} />
+            </button>
+          )}
+          <button
+            className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
+            style={{ position: "static", opacity: acc.favorite ? 1 : undefined }}
+            onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
+            title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
+          >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
+        </div>
         {ctxMenuEl}
       </div>
     );
@@ -356,20 +363,24 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
                   {switching ? <><RefreshIcon size={13} /> Switching…</> : <><SwitchIcon size={13} /> Switch</>}
                 </button>
               )}
-              {hasLeetify && onStats && (
-                <button className={`${styles.cardFooterBtn} ${styles.cardFooterBtnStats}`} onClick={() => onStats(acc)} title="Leetify Stats">
-                  <LeetifyIcon size={13} />
-                </button>
-              )}
             </>
           )}
         </div>
       )}
-      <button
-        className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
-        onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
-        title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
-      >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
+      {/* Corner cluster: Leetify icon + star */}
+      <div className={styles.cardCornerActions}>
+        {hasLeetify && onStats && (
+          <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); onStats(acc); }} title="Leetify Stats">
+            <LeetifyIcon size={13} />
+          </button>
+        )}
+        <button
+          className={`${styles.starBtn} ${acc.favorite ? styles.starBtnOn : ""}`}
+          style={{ position: "static" }}
+          onClick={e => { e.stopPropagation(); onToggleFavorite(acc.id); }}
+          title={acc.favorite ? "Remove from favorites" : "Add to favorites"}
+        >{acc.favorite ? <StarFilledIcon size={15} /> : <StarIcon size={15} />}</button>
+      </div>
       {ctxMenuEl}
     </div>
   );

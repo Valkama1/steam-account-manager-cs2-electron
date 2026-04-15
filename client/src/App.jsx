@@ -14,7 +14,8 @@ import DropCountdown from "./components/DropCountdown.jsx";
 import Section from "./components/Section.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 import WatchlistPanel from "./components/WatchlistPanel.jsx";
-import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon } from "./components/icons.jsx";
+import NotificationsPanel from "./components/NotificationsPanel.jsx";
+import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon } from "./components/icons.jsx";
 
 export default function App() {
   const [accounts, setAccounts] = useState([]);
@@ -36,6 +37,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [watchlist, setWatchlist]         = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen]         = useState(false);
+  const [notifAnchor, setNotifAnchor]     = useState(null);
   const [watchChecking, setWatchChecking] = useState(false);
   const [activeId, setActiveId]               = useState(null);
   const [activeSectionId, setActiveSectionId] = useState(null);
@@ -96,6 +100,37 @@ export default function App() {
         .catch(() => {});
     });
   }, [accounts, leetifyKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Notifications ──
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const r = await fetch("/api/notifications");
+      if (r.ok) setNotifications(await r.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const id = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(id);
+  }, [fetchNotifications]);
+
+  function handleToggleNotif(e) {
+    if (notifOpen) { setNotifOpen(false); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setNotifAnchor({ top: rect.top, left: rect.right + 8 });
+    setNotifOpen(true);
+  }
+
+  async function handleClearAllNotifs() {
+    await fetch("/api/notifications", { method: "DELETE" });
+    setNotifications([]);
+  }
+
+  async function handleDismissNotif(id) {
+    await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }
 
   // ── Watchlist ──
   const fetchWatchlist = useCallback(async () => {
@@ -635,6 +670,12 @@ export default function App() {
             <span className={styles.logoMark}>▣</span>
             {!settings.sidebarCollapsed && <span className={styles.logoText}>STEAM<br /><em>MANAGER</em></span>}
           </div>
+          {!settings.sidebarCollapsed && (
+            <button data-notif-trigger className={`${styles.notifHeaderBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
+              <BellIcon size={16} />
+              {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
+            </button>
+          )}
         </div>
 
         <DropCountdown collapsed={settings.sidebarCollapsed} />
@@ -662,6 +703,10 @@ export default function App() {
         {settings.sidebarCollapsed ? (
           <>
             <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={18} /></button>
+            <button data-notif-trigger className={`${styles.gearBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
+              <BellIcon size={18} />
+              {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
+            </button>
             <button className={styles.gearBtn} onClick={() => setSettingsOpen(true)} title="Settings"><SettingsIcon size={18} /></button>
           </>
         ) : (
@@ -821,7 +866,7 @@ export default function App() {
                               {list.map(a => <AccountCard {...cardProps(a, extra)} />)}
                             </SortableContext>
                             <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
-                              {activeAcc ? <AccountCard {...cardProps(activeAcc)} draggable={false} /> : null}
+                              {activeAcc ? <AccountCard {...cardProps(activeAcc)} draggable={false} isDragOverlay /> : null}
                             </DragOverlay>
                           </DndContext>
                         </Section>
@@ -866,6 +911,15 @@ export default function App() {
       )}
       {statsAcc && (
         <LeetifyModal acc={statsAcc} onClose={() => setStatsAcc(null)} />
+      )}
+      {notifOpen && (
+        <NotificationsPanel
+          notifications={notifications}
+          onClose={() => setNotifOpen(false)}
+          onClearAll={handleClearAllNotifs}
+          onDismiss={handleDismissNotif}
+          anchor={notifAnchor}
+        />
       )}
       {watchlistOpen && (
         <WatchlistPanel

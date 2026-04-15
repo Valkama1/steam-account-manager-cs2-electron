@@ -2,7 +2,7 @@ const express         = require("express");
 const cors            = require("cors");
 const fs              = require("fs");
 const path            = require("path");
-const { exec, spawn } = require("child_process");
+const { exec, execFile, spawn } = require("child_process");
 const { v4: uuidv4 }  = require("uuid");
 
 const { encryptPassword, decryptPassword, generateSteamGuardCode } = require("./crypto.js");
@@ -10,6 +10,7 @@ const { readConfig, writeConfig }                                   = require(".
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
 const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
+const { readNotifications, addNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
 
 const DEBUG = process.env.DEBUG === "1";
 const dbg = (...args) => { if (DEBUG) console.log(...args); };
@@ -54,13 +55,23 @@ app.post("/api/accounts/refresh-all", async (_req, res) => {
   }
   await Promise.all(Array.from({ length: Math.min(5, withId.length) }, gameWorker));
 
-  // Write updates
+  // Write updates + detect new bans
   for (const acc of withId) {
     const i = accounts.findIndex(a => a.id === acc.id);
     if (i === -1) continue;
     const bans    = bansMap[acc.steamId64];
     const summary = summariesMap[acc.steamId64];
     const games   = gameMap[acc.steamId64];
+
+    if (bans) {
+      const old  = accounts[i];
+      const name = old.alias || old.profileName || old.name;
+      if (!old.vacBanned && bans.vacBanned)
+        addNotification({ type: "vac_ban",  source: "account", accountName: name, steamId64: old.steamId64 });
+      if ((old.gameBans || 0) < bans.gameBans)
+        addNotification({ type: "game_ban", source: "account", accountName: name, steamId64: old.steamId64 });
+    }
+
     accounts[i] = {
       ...accounts[i],
       ...(summary && { avatar: summary.avatar, profileName: summary.profileName }),
@@ -130,9 +141,7 @@ app.get("/api/accounts/:id/leetify", async (req, res) => {
   const acc = readDB().find(a => a.id === req.params.id);
   if (!acc) return res.status(404).json({ error: "not found" });
   if (!acc.steamId64) return res.status(400).json({ error: "no_steam_id" });
-  console.log(`[leetify] checking steamId64=${acc.steamId64}`);
   const profile = await fetchLeetifyProfile(acc.steamId64);
-  console.log(`[leetify] result:`, JSON.stringify(profile)?.slice(0, 200));
   if (!profile) return res.status(502).json({ error: "leetify_error" });
   res.json(profile);
 });
@@ -197,8 +206,8 @@ async function doSwitch(req, res) {
     const vdfOk = setSteamAutoLogin(steamDir, account.steamId64);
     dbg(`[switch] setSteamAutoLogin returned ${vdfOk}`);
     await Promise.all([
-      new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v AutoLoginUser /t REG_SZ /d "${username}" /f`, r)),
-      new Promise(r => exec(`reg add "HKCU\\SOFTWARE\\Valve\\Steam" /v RememberPassword /t REG_DWORD /d 1 /f`, r)),
+      new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "AutoLoginUser", "/t", "REG_SZ", "/d", username, "/f"], r)),
+      new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "RememberPassword", "/t", "REG_DWORD", "/d", "1", "/f"], r)),
     ]);
     dbg(`[switch] registry set, launching Steam`);
     const fastPassword = account.password ? decryptPassword(account.password) : null;
@@ -260,8 +269,12 @@ app.get("/api/steam-active", (req, res) => {
 });
 
 app.get("/api/config", (req, res) => res.json(readConfig()));
+const ALLOWED_CONFIG_KEYS = new Set(["steamApiKey", "leetifyApiKey", "lastRefreshed"]);
 app.patch("/api/config", (req, res) => {
-  const config = { ...readConfig(), ...req.body };
+  const updates = Object.fromEntries(
+    Object.entries(req.body).filter(([k]) => ALLOWED_CONFIG_KEYS.has(k))
+  );
+  const config = { ...readConfig(), ...updates };
   writeConfig(config);
   res.json(config);
 });
@@ -301,6 +314,20 @@ app.delete("/api/watchlist/:id", (req, res) => {
   const filtered = list.filter(e => e.id !== req.params.id);
   if (filtered.length === list.length) return res.status(404).json({ error: "not found" });
   writeWatchlist(filtered);
+  res.json({ ok: true });
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+app.get("/api/notifications", (_req, res) => res.json(readNotifications()));
+
+app.delete("/api/notifications", (_req, res) => {
+  clearAllNotifications();
+  res.json({ ok: true });
+});
+
+app.delete("/api/notifications/:id", (req, res) => {
+  clearOneNotification(req.params.id);
   res.json({ ok: true });
 });
 

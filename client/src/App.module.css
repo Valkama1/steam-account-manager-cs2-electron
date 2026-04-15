@@ -220,6 +220,177 @@
 }
 .gearBtn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 
+/* Bell badge wrapper — collapsed sidebar icon or header button */
+.notifGearBtn { position: relative; }
+
+/* Bell button in expanded sidebar header */
+.notifHeaderBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--dim);
+  padding: 6px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--motion-standard), background var(--dur-short) var(--motion-standard);
+}
+.notifHeaderBtn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+
+/* Notification count badge */
+.notifBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ── Notifications panel ─────────────────────────────────────────────────── */
+.notifPanel {
+  position: fixed;
+  left: 16px;
+  width: 320px;
+  max-height: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+}
+.notifHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.notifTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.notifClearBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--motion-standard), border-color var(--dur-short) var(--motion-standard);
+}
+.notifClearBtn:hover { color: var(--text); border-color: var(--dim); }
+.notifCloseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--dim);
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--motion-standard);
+}
+.notifCloseBtn:hover { color: var(--text); }
+.notifList {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+.notifEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--dim);
+  font-size: 13px;
+}
+.notifItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 14px;
+  transition: background var(--dur-short) var(--motion-standard);
+}
+.notifItem:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.notifDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.notifBody { flex: 1; min-width: 0; }
+.notifItemTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.notifName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notifItemTitle .notifBadge {
+  position: static;
+  min-width: unset;
+  height: unset;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: none;
+  border: 1px solid;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: inherit;
+}
+.notifMeta {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.notifDismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--dim);
+  padding: 3px;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-short) var(--motion-standard), color var(--dur-short) var(--motion-standard);
+  flex-shrink: 0;
+}
+.notifItem:hover .notifDismiss { opacity: 1; }
+.notifDismiss:hover { color: var(--text); }
+
 /* Collapse button — MD3 icon button */
 .collapseBtn {
   margin-top: auto;
@@ -952,6 +1123,7 @@
 }
 .dragHandle:active { cursor: grabbing; }
 .cardList:hover .dragHandle { opacity: 1; }
+.dragHandleVisible { opacity: 1 !important; }
 
 /* List layout */
 .cardList {
@@ -1303,7 +1475,7 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
 /* ── cooldown history modal ── */
 .modalWide { width: 520px; }
 
-/* ── CS2 stats modal ─────────────────────────────────────────────────────── */
+/* ── Stats modals ────────────────────────────────────────────────────────── */
 .statsModal { width: 480px; }
 
 .statsState {
@@ -1414,7 +1586,7 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
 .statRowLabel { font-size: 13px; color: var(--dim); }
 .statRowValue { font-size: 13px; color: var(--text); font-family: var(--mono); font-weight: 500; }
 
-/* ── stats button on card ────────────────────────────────────────────────── */
+/* ── stats button on card (list layout pill) ─────────────────────────────── */
 .statsBtn {
   display: flex;
   align-items: center;
@@ -1505,6 +1677,161 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
 .lMatchScore { color: var(--dim); font-family: var(--mono); }
 .lMatchRating { font-weight: 600; font-family: var(--mono); width: 28px; text-align: right; }
 .lMatchDate  { color: var(--dim); font-size: 11px; }
+
+/* ── Leetify modal redesign ──────────────────────────────────────────────── */
+.leetifyModal { width: 540px; }
+
+.lMainGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 8px 0 20px;
+  align-items: start;
+}
+
+/* Left column — bars */
+.lBarsCol { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+
+.lBarRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lBarLabel {
+  width: 88px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.lBarTrack {
+  flex: 1;
+  height: 5px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  overflow: hidden;
+}
+.lBarFill {
+  height: 100%;
+  border-radius: 9999px;
+}
+.lBarVal {
+  width: 38px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+/* Right column — rings */
+.lRingsCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.lRingRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.lRingWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lRingInner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.lRingValueLg {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.lRingValueSm {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.lRingLabel {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+}
+
+/* Small stats row under rings */
+.lSmallStats {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.lSmallStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 52px;
+}
+.lSmallStatVal {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+  line-height: 1;
+}
+.lSmallStatLbl {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+/* Corner actions cluster on account cards (grid layout) */
+.cardCornerActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+/* Star inside corner cluster — override absolute positioning */
+.cardCornerActions .starBtn {
+  position: static;
+}
+
+.lCardBtn {
+  background: none;
+  border: none;
+  padding: 3px;
+  border-radius: 9999px;
+  cursor: pointer;
+  color: var(--dim);
+  opacity: 0;
+  transition: opacity var(--dur-short) var(--motion-standard),
+              color var(--dur-short) var(--motion-standard);
+}
+.card:hover .lCardBtn { opacity: 1; }
+.lCardBtn:hover { color: var(--accent); }
 
 .historyList {
   display: flex;

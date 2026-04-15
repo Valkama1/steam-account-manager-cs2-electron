@@ -2,6 +2,7 @@ import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
 import { isExpired } from "../cooldown.js";
 import { CloseIcon } from "./icons.jsx";
+import ModalShell from "./ModalShell.jsx";
 
 const TYPE_META = {
   abandon:       { label: "Abandon",       color: "var(--yellow)" },
@@ -23,13 +24,13 @@ export default function CooldownHistoryModal({ acc, onClose, onDeleteEntry }) {
     .map((entry, originalIndex) => ({ ...entry, originalIndex }))
     .reverse();
   return (
-    <div className={styles.overlay} onMouseDown={onClose}>
-      <div className={`${styles.modal} ${styles.modalWide}`} onMouseDown={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} className={styles.modalWide}>
+      {(close) => (<>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>
             Cooldown History — {acc.alias || acc.profileName || acc.name}
           </span>
-          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
+          <button className={styles.modalClose} onClick={close}><CloseIcon size={14} /></button>
         </div>
         <div className={styles.modalScrollBody}>
           {history.length === 0 ? (
@@ -68,7 +69,7 @@ export default function CooldownHistoryModal({ acc, onClose, onDeleteEntry }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   );
 }

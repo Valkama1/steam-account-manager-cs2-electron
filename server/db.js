@@ -31,9 +31,9 @@ function migratePasswords() {
   }
 }
 
-// Strip password before sending to client, expose hasPassword flag instead
+// Strip sensitive fields before sending to client
 function sanitize(account) {
-  const { password, ...rest } = account;
+  const { password, sharedSecret, ...rest } = account;
   return { ...rest, hasPassword: !!password };
 }
 
