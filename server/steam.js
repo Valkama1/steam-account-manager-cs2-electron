@@ -1,6 +1,7 @@
 const https              = require("https");
 const http               = require("http");
 const fs                 = require("fs");
+const os                 = require("os");
 const path               = require("path");
 const { exec, spawn }    = require("child_process");
 const { readConfig }     = require("./config.js");
@@ -111,24 +112,77 @@ async function fetchSteamFields(profileUrl) {
 
 // ── Steam client control ──────────────────────────────────────────────────────
 
+// Returns { exe, dir } or null.
+// exe  — path to the Steam executable to spawn
+// dir  — Steam installation directory (contains config/loginusers.vdf, registry.vdf)
 function getSteamPath() {
   return new Promise((resolve) => {
+    if (process.platform === "linux") {
+      const home = os.homedir();
+      // Ordered by likelihood; follow symlinks by checking loginusers.vdf presence
+      const candidateDirs = [
+        path.join(home, ".local", "share", "Steam"),
+        path.join(home, ".steam", "debian-installation"),
+        path.join(home, ".steam", "steam"),
+        path.join(home, ".steam", "root"),
+      ];
+      const dir = candidateDirs.find(d =>
+        fs.existsSync(path.join(d, "config", "loginusers.vdf"))
+      ) ?? candidateDirs.find(d => fs.existsSync(d)) ?? null;
+
+      const exeCandidates = ["/usr/bin/steam", "/usr/local/bin/steam"];
+      const exe = exeCandidates.find(e => fs.existsSync(e)) || "steam";
+
+      return resolve(dir ? { exe, dir } : null);
+    }
+
+    // Windows — read install path from registry
     exec('reg query "HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath', (err, stdout) => {
       if (!err && stdout) {
         const match = stdout.match(/InstallPath\s+REG_SZ\s+(.+)/);
         if (match) {
-          const exePath = path.join(match[1].trim(), "steam.exe");
-          if (fs.existsSync(exePath)) return resolve(exePath);
+          const dir = match[1].trim();
+          const exe = path.join(dir, "steam.exe");
+          if (fs.existsSync(exe)) return resolve({ exe, dir });
         }
       }
-      const fallback = "C:\\Program Files (x86)\\Steam\\steam.exe";
-      resolve(fs.existsSync(fallback) ? fallback : null);
+      const dir = "C:\\Program Files (x86)\\Steam";
+      const exe = path.join(dir, "steam.exe");
+      resolve(fs.existsSync(exe) ? { exe, dir } : null);
     });
   });
 }
 
 // Returns true if Steam was running and was killed, false if it was already dead.
-function killSteam(steamPath) {
+function killSteam(exePath) {
+  if (process.platform === "linux") {
+    return new Promise((resolve) => {
+      exec("pgrep steam", (_err, stdout) => {
+        if (!stdout || !stdout.trim()) {
+          dbg("[killSteam] Steam not running");
+          return resolve(false);
+        }
+        dbg("[killSteam] sending -shutdown");
+        exec("steam -shutdown", () => {
+          let attempts = 0;
+          const interval = setInterval(() => {
+            exec("pgrep steam", (_e, out) => {
+              if (!out || !out.trim()) {
+                dbg(`[killSteam] Steam gone after ${attempts * 500}ms`);
+                clearInterval(interval);
+                resolve(true);
+              } else if (++attempts >= 20) {
+                dbg("[killSteam] graceful timeout, force-killing");
+                exec("pkill -9 steam", () => { clearInterval(interval); resolve(true); });
+              }
+            });
+          }, 500);
+        });
+      });
+    });
+  }
+
+  // Windows
   return new Promise((resolve) => {
     exec('tasklist /NH', (_err, stdout) => {
       const out     = (stdout || "").toLowerCase();
@@ -141,38 +195,55 @@ function killSteam(steamPath) {
         return resolve(false);
       }
 
-      function doKill(exePath) {
-        if (exePath) exec(`"${exePath}" -shutdown`);
+      if (exePath) exec(`"${exePath}" -shutdown`);
 
-        let attempts = 0;
-        const interval = setInterval(() => {
-          exec('tasklist /NH', (_err2, stdout2) => {
-            const out2 = (stdout2 || "").toLowerCase();
-            const dead = !out2.includes("steam.exe") &&
-                         !out2.includes("steamwebhelper.exe") &&
-                         !out2.includes("steamservice.exe");
-            if (dead) {
-              dbg(`[killSteam] all Steam processes gone after ${attempts * 500}ms`);
-              clearInterval(interval);
-              resolve(true);
-            } else if (++attempts >= 60) {
-              dbg(`[killSteam] graceful shutdown timed out, force killing`);
-              exec(
-                "taskkill /F /T /IM steam.exe & taskkill /F /IM steamwebhelper.exe & taskkill /F /IM SteamService.exe",
-                () => { clearInterval(interval); resolve(true); }
-              );
-            }
-          });
-        }, 500);
-      }
-
-      if (steamPath) {
-        doKill(steamPath);
-      } else {
-        getSteamPath().then(doKill);
-      }
+      let attempts = 0;
+      const interval = setInterval(() => {
+        exec('tasklist /NH', (_err2, stdout2) => {
+          const out2 = (stdout2 || "").toLowerCase();
+          const dead = !out2.includes("steam.exe") &&
+                       !out2.includes("steamwebhelper.exe") &&
+                       !out2.includes("steamservice.exe");
+          if (dead) {
+            dbg(`[killSteam] all Steam processes gone after ${attempts * 500}ms`);
+            clearInterval(interval);
+            resolve(true);
+          } else if (++attempts >= 60) {
+            dbg("[killSteam] graceful shutdown timed out, force killing");
+            exec(
+              "taskkill /F /T /IM steam.exe & taskkill /F /IM steamwebhelper.exe & taskkill /F /IM SteamService.exe",
+              () => { clearInterval(interval); resolve(true); }
+            );
+          }
+        });
+      }, 500);
     });
   });
+}
+
+// Set AutoLoginUser + RememberPassword in Linux Steam's registry.vdf.
+// On Windows this is handled by `reg add` in index.js.
+function setAutoLoginRegistry(steamDir, username) {
+  const registryPath = path.join(steamDir, "registry.vdf");
+  if (!fs.existsSync(registryPath)) return;
+  try {
+    const tree = vdfParse(fs.readFileSync(registryPath, "utf8"));
+    // Walk Registry > HKCU > Software > Valve > Steam (case-insensitive)
+    function ci(obj, key) {
+      if (!obj || typeof obj !== "object") return null;
+      const k = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+      return k ? obj[k] : null;
+    }
+    const steamKey = ci(ci(ci(ci(ci(tree, "Registry"), "HKCU"), "Software"), "Valve"), "Steam");
+    if (!steamKey) return;
+    steamKey["AutoLoginUser"]    = username;
+    steamKey["RememberPassword"] = "1";
+    const topKey = Object.keys(tree)[0];
+    fs.writeFileSync(registryPath, `"${topKey}"\n{\n${vdfStringify(tree[topKey], 1)}\n}\n`);
+    dbg("[registry.vdf] AutoLoginUser set to", username);
+  } catch (e) {
+    console.error("[registry.vdf] error:", e.message);
+  }
 }
 
 // ── Minimal VDF tokenizer ─────────────────────────────────────────────────────
@@ -465,4 +536,4 @@ function fetchPlayerSummariesBatch(steamId64s) {
   ).then(results => Object.assign({}, ...results));
 }
 
-module.exports = { fetchSteamProfile, fetchBanData, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchSteamFields, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin };
+module.exports = { fetchSteamProfile, fetchBanData, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchSteamFields, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin, setAutoLoginRegistry };

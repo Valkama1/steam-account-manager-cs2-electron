@@ -52,6 +52,13 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility"
+    },
+    "deb": {
+      "depends": ["libnotify4", "libxtst6", "libnss3"]
     }
   }
 }

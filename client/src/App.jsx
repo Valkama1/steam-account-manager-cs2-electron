@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSe
 import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
 import { isExpired, getCurrentWeekStart } from "./cooldown.js";
 import styles from "./App.module.css";
-import { API, CATPPUCCIN_MOCHA, CATPPUCCIN_LATTE, SETTINGS_KEY, SORT_OPTIONS } from "./constants.js";
+import { API, THEME_PRESETS, SETTINGS_KEY, SORT_OPTIONS } from "./constants.js";
 import { readSettings, readFilterCookie, writeFilterCookie, sortAccounts } from "./utils.js";
 import AccountCard from "./components/AccountCard.jsx";
 import AccountModal from "./components/AccountModal.jsx";
@@ -484,7 +484,7 @@ export default function App() {
   useEffect(() => {
     function applyColors() {
       const colors = settings.themeMode === "auto"
-        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? CATPPUCCIN_MOCHA : CATPPUCCIN_LATTE)
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? THEME_PRESETS.dark?.defaults : THEME_PRESETS.light?.defaults)
         : settings.colors[settings.themeMode];
       if (!colors) return;
       const root = document.documentElement;

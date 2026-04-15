@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import styles from "../App.module.css";
-import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS, CATPPUCCIN_MOCHA } from "../constants.js";
+import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS } from "../constants.js";
 import { InfoIcon, CloseIcon, DownloadIcon, UploadIcon, DeleteIcon } from "./icons.jsx";
 import ModalShell from "./ModalShell.jsx";
 
@@ -89,7 +89,7 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
   }
 
   function resetTheme() {
-    const defaults = THEME_PRESETS[settings.themeMode]?.defaults ?? CATPPUCCIN_MOCHA;
+    const defaults = THEME_PRESETS[settings.themeMode]?.defaults ?? THEME_PRESETS.dark?.defaults;
     onChange("colors", { ...settings.colors, [settings.themeMode]: { ...defaults } });
   }
 

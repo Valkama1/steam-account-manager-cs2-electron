@@ -5,10 +5,10 @@ const path            = require("path");
 const { exec, execFile, spawn } = require("child_process");
 const { v4: uuidv4 }  = require("uuid");
 
-const { encryptPassword, decryptPassword, generateSteamGuardCode } = require("./crypto.js");
+const { encryptPassword, decryptPassword } = require("./crypto.js");
 const { readConfig, writeConfig }                                   = require("./config.js");
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
-const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin } = require("./steam.js");
+const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin, setAutoLoginRegistry } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
 const { readNotifications, addNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
 
@@ -185,10 +185,10 @@ async function doSwitch(req, res) {
   const account  = accounts.find(a => a.id === req.params.id);
   if (!account) return res.status(404).json({ error: "not found" });
 
-  const username  = account.name.toLowerCase();
-  const steamPath = await getSteamPath();
-  if (!steamPath) return res.status(500).json({ error: "Steam executable not found" });
-  const steamDir = path.dirname(steamPath);
+  const username   = account.name.toLowerCase();
+  const steamInfo  = await getSteamPath();
+  if (!steamInfo) return res.status(500).json({ error: "Steam executable not found" });
+  const { exe: steamExe, dir: steamDir } = steamInfo;
 
   // Fast path — use cached session token from loginusers.vdf
   const loginUsersPath = path.join(steamDir, "config", "loginusers.vdf");
@@ -198,32 +198,29 @@ async function doSwitch(req, res) {
 
   if (inVdf) {
     dbg(`[switch] fast-path → ${username} (steamId64=${account.steamId64})`);
-    const wasRunning = await killSteam(steamPath);
+    const wasRunning = await killSteam(steamExe);
     if (wasRunning) {
       dbg(`[switch] Steam killed, waiting 200ms for file handles to release`);
       await new Promise(r => setTimeout(r, 200));
     }
     const vdfOk = setSteamAutoLogin(steamDir, account.steamId64);
     dbg(`[switch] setSteamAutoLogin returned ${vdfOk}`);
-    await Promise.all([
-      new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "AutoLoginUser", "/t", "REG_SZ", "/d", username, "/f"], r)),
-      new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "RememberPassword", "/t", "REG_DWORD", "/d", "1", "/f"], r)),
-    ]);
+
+    if (process.platform === "linux") {
+      setAutoLoginRegistry(steamDir, username);
+    } else {
+      await Promise.all([
+        new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "AutoLoginUser", "/t", "REG_SZ", "/d", username, "/f"], r)),
+        new Promise(r => execFile("reg", ["add", "HKCU\\SOFTWARE\\Valve\\Steam", "/v", "RememberPassword", "/t", "REG_DWORD", "/d", "1", "/f"], r)),
+      ]);
+    }
+
     dbg(`[switch] registry set, launching Steam`);
     const fastPassword = account.password ? decryptPassword(account.password) : null;
     const spawnArgs    = fastPassword ? ["-login", username, fastPassword] : [];
-    const fastChild    = spawn(steamPath, spawnArgs, { cwd: steamDir, detached: true, stdio: "ignore", windowsHide: !!fastPassword });
+    const fastChild    = spawn(steamExe, spawnArgs, { detached: true, stdio: "ignore", windowsHide: !!fastPassword });
     fastChild.on("error", e => console.error(`[switch] spawn error: ${e.message}`));
     fastChild.unref();
-
-    if (fastPassword && account.sharedSecret) {
-      const totpCode = generateSteamGuardCode(account.sharedSecret);
-      const ps1Path  = path.join(__dirname, "2fa.ps1");
-      spawn("powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", ps1Path, totpCode],
-        { detached: true, stdio: "ignore", windowsHide: true }
-      ).unref();
-    }
 
     return res.json({ ok: true });
   }
@@ -236,21 +233,12 @@ async function doSwitch(req, res) {
   if (!plainPassword) return res.status(500).json({ error: "Failed to decrypt password" });
 
   dbg(`[switch] password path → ${username}`);
-  const wasRunning = await killSteam(steamPath);
+  const wasRunning = await killSteam(steamExe);
   if (wasRunning) await new Promise(r => setTimeout(r, 200));
 
-  const child = spawn(steamPath, ["-login", username, plainPassword], { cwd: steamDir, detached: true, stdio: "ignore", windowsHide: true });
+  const child = spawn(steamExe, ["-login", username, plainPassword], { detached: true, stdio: "ignore", windowsHide: true });
   child.on("error", e => console.error(`[switch] spawn error: ${e.message}`));
   child.unref();
-
-  if (account.sharedSecret) {
-    const totpCode = generateSteamGuardCode(account.sharedSecret);
-    const ps1Path  = path.join(__dirname, "2fa.ps1");
-    spawn("powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", ps1Path, totpCode],
-      { detached: true, stdio: "ignore", windowsHide: true }
-    ).unref();
-  }
 
   return res.json({ ok: true });
 }
@@ -258,6 +246,24 @@ async function doSwitch(req, res) {
 // ── Misc routes ───────────────────────────────────────────────────────────────
 
 app.get("/api/steam-active", (req, res) => {
+  if (process.platform === "linux") {
+    exec("pgrep steam", async (_err, stdout) => {
+      const running = !!(stdout && stdout.trim());
+      if (!running) return res.json({ running: false, account: null });
+      // Read AutoLoginUser from registry.vdf
+      try {
+        const steamInfo = await getSteamPath();
+        if (!steamInfo) return res.json({ running: true, account: null });
+        const regPath = path.join(steamInfo.dir, "registry.vdf");
+        if (!fs.existsSync(regPath)) return res.json({ running: true, account: null });
+        const raw = fs.readFileSync(regPath, "utf8");
+        const match = raw.match(/"AutoLoginUser"\s+"([^"]+)"/i);
+        res.json({ running: true, account: match ? match[1] : null });
+      } catch { res.json({ running: true, account: null }); }
+    });
+    return;
+  }
+
   exec('tasklist /FI "IMAGENAME eq steam.exe" /NH', (err, stdout) => {
     const running = !!(stdout && stdout.toLowerCase().includes("steam.exe"));
     if (!running) return res.json({ running: false, account: null });

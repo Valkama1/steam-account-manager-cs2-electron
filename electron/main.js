@@ -2,6 +2,13 @@ const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
 const fs   = require("fs");
 
+// Enable native Wayland rendering when running on a Wayland compositor.
+// Falls back to XWayland automatically when not on Wayland.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-features", "UseOzonePlatform,WaylandWindowDecorations");
+  app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+}
+
 const isDev = !app.isPackaged;
 const PORT  = 3001;
 

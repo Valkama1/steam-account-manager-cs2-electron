@@ -17,17 +17,17 @@ const MAP_SHORT = {
 
 function pctColor(v) {
   if (v == null) return "var(--dim)";
-  if (v >= 70)  return "#4db84d";
-  if (v >= 55)  return "#80c74d";
+  if (v >= 70)  return "var(--green)";
+  if (v >= 55)  return "color-mix(in srgb, var(--green) 70%, var(--yellow))";
   if (v >= 45)  return "var(--text)";
-  if (v >= 30)  return "#e08c3a";
-  return "#e05050";
+  if (v >= 30)  return "var(--yellow)";
+  return "var(--red)";
 }
 
 function deltaColor(v) {
   if (v == null) return "var(--dim)";
-  if (v > 0)  return "#4db84d";
-  if (v < 0)  return "#e05050";
+  if (v > 0)  return "var(--green)";
+  if (v < 0)  return "var(--red)";
   return "var(--text)";
 }
 
