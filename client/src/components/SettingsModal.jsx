@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import styles from "../App.module.css";
 import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS, CATPPUCCIN_MOCHA } from "../constants.js";
 import { InfoIcon, CloseIcon, DownloadIcon, UploadIcon, DeleteIcon } from "./icons.jsx";
+import ModalShell from "./ModalShell.jsx";
 
 export function InfoTip({ text }) {
   const ref = useRef(null);
@@ -93,11 +94,11 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
   }
 
   return (
-    <div className={styles.overlay} onMouseDown={onClose}>
-      <div className={`${styles.modal} ${styles.settingsModal}`} onMouseDown={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} className={styles.settingsModal}>
+      {(close) => (<>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>Settings</span>
-          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
+          <button className={styles.modalClose} onClick={close}><CloseIcon size={14} /></button>
         </div>
 
         <div className={styles.settingsTabs}>
@@ -245,7 +246,7 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
             </>
           )}
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   );
 }

@@ -16,7 +16,7 @@
   width: 280px;
   min-width: 280px;
   background: var(--surface);
-  border-right: 1px solid var(--border);
+  box-shadow: 2px 0 8px rgba(0,0,0,0.18);
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
@@ -257,26 +257,29 @@
 }
 
 /* ── Notifications panel ─────────────────────────────────────────────────── */
+@keyframes notifPanelIn { from { opacity: 0; transform: scale(0.95) translateY(-6px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
 .notifPanel {
   position: fixed;
   left: 16px;
   width: 320px;
   max-height: 480px;
   background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0,0,0,.28);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   z-index: 200;
+  animation: notifPanelIn 0.14s cubic-bezier(0.2, 0, 0, 1);
+  transform-origin: top left;
 }
 .notifHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
   flex-shrink: 0;
 }
 .notifTitle {
@@ -288,16 +291,16 @@
   color: var(--text);
 }
 .notifClearBtn {
-  background: none;
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none;
   border-radius: 6px;
   color: var(--dim);
   font-size: 11px;
   padding: 2px 8px;
   cursor: pointer;
-  transition: color var(--dur-short) var(--motion-standard), border-color var(--dur-short) var(--motion-standard);
+  transition: color var(--dur-short) var(--motion-standard), background var(--dur-short) var(--motion-standard);
 }
-.notifClearBtn:hover { color: var(--text); border-color: var(--dim); }
+.notifClearBtn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 14%, transparent); }
 .notifCloseBtn {
   display: flex;
   align-items: center;
@@ -398,22 +401,21 @@
   align-items: center;
   justify-content: center;
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 9999px;
   color: var(--dim);
   font-size: 14px;
   padding: 8px 12px;
   width: 100%;
-  transition: color var(--dur-short) var(--motion-standard), border-color var(--dur-short) var(--motion-standard);
+  transition: color var(--dur-short) var(--motion-standard), background var(--dur-short) var(--motion-standard);
 }
-.collapseBtn:hover { color: var(--text); border-color: var(--dim); }
+.collapseBtn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 
 /* Stats widget */
 .stats {
   display: flex;
   justify-content: space-around;
   background: var(--card);
-  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px 12px;
 }
@@ -424,7 +426,6 @@
   align-items: center;
   gap: 4px;
   background: var(--card);
-  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 8px;
   width: 100%;
@@ -439,6 +440,11 @@
 }
 
 /* ── modal / dialog — MD3 Dialog (Extra Large: 28dp) ── */
+@keyframes overlayIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlayOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modalIn    { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes modalOut   { from { opacity: 1; transform: scale(1) translateY(0); } to { opacity: 0; transform: scale(0.94) translateY(8px); } }
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -448,11 +454,12 @@
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: overlayIn 0.15s ease;
 }
+.overlayOut { animation: overlayOut 0.15s ease forwards !important; }
 
 .modal {
   background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 28px;
   padding: 24px;
   width: 400px;
@@ -464,7 +471,9 @@
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.2),
     0 12px 40px rgba(0, 0, 0, 0.35);
+  animation: modalIn 0.15s cubic-bezier(0.2, 0, 0, 1);
 }
+.modalOut { animation: modalOut 0.15s cubic-bezier(0.2, 0, 0, 1) forwards !important; }
 
 /* Scrollable inner region — extends to modal's edges so the scrollbar
    sits against the modal border rather than floating over content */
@@ -601,18 +610,14 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid var(--border);
   background: var(--card);
   cursor: pointer;
   user-select: none;
-  transition:
-    border-color var(--dur-short) var(--motion-standard),
-    background var(--dur-short) var(--motion-standard);
+  transition: background var(--dur-short) var(--motion-standard);
 }
-.toggleRow:hover { border-color: var(--dim); }
+.toggleRow:hover { background: var(--card-h); }
 .toggleRowOn {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border)) !important;
-  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  background: color-mix(in srgb, var(--accent) 10%, var(--card)) !important;
 }
 
 .toggleIcon {
@@ -822,7 +827,6 @@
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
-  border-bottom: 1px solid var(--border);
   padding-bottom: 16px;
 }
 
@@ -1048,32 +1052,29 @@
   display: flex;
   flex-direction: column;
   background: var(--card);
-  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  transition:
-    border-color var(--dur-short) var(--motion-standard),
-    box-shadow var(--dur-short) var(--motion-standard);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12);
+  transition: box-shadow var(--dur-short) var(--motion-standard);
   cursor: default;
   position: relative;
 }
 
 .card:hover {
-  border-color: var(--dim);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.28), 0 2px 6px rgba(0,0,0,0.16);
 }
 
 .cardDraggable { cursor: grab; }
 .cardDraggable:active { cursor: grabbing; }
 
 .cardDragOver {
-  border-color: var(--accent) !important;
+  outline: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--card));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent) !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.28) !important;
 }
 
 .cardForbiddenDrop {
-  border-color: var(--red) !important;
+  outline: 2px solid var(--red);
   background: color-mix(in srgb, var(--red) 8%, var(--card));
   cursor: not-allowed;
 }
@@ -1645,6 +1646,22 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
   font-family: var(--mono);
 }
 
+.lMatchColHeaders {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.lMatchColHeaders > span:nth-child(1) { width: 18px; flex-shrink: 0; }
+.lMatchColHeaders > span:nth-child(2) { flex: 1; }
+.lMatchColRating { min-width: 52px; text-align: right; }
+.lMatchColDate   { margin-left: auto; }
+
 .lMatchList { display: flex; flex-direction: column; gap: 4px; }
 
 .lMatchRow {
@@ -1675,11 +1692,58 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
 
 .lMatchMap   { flex: 1; color: var(--fg); }
 .lMatchScore { color: var(--dim); font-family: var(--mono); }
-.lMatchRating { font-weight: 600; font-family: var(--mono); width: 28px; text-align: right; }
-.lMatchDate  { color: var(--dim); font-size: 11px; }
+.lMatchRating { font-weight: 600; font-family: var(--mono); min-width: 52px; text-align: right; }
+.lMatchDate  { color: var(--dim); font-size: 11px; margin-left: auto; }
 
 /* ── Leetify modal redesign ──────────────────────────────────────────────── */
-.leetifyModal { width: 540px; }
+.leetifyModal { width: 480px; }
+
+/* Section-based layout */
+.lSections {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 16px;
+}
+
+.lSection {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lSectionTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+
+/* Overview: two big rings centred */
+.lOverviewRings {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* Bar group labels and divider */
+.lBarGroupLabel {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin-bottom: -4px;
+}
+.lBarDivider {
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  margin: 2px 0;
+}
 
 .lMainGrid {
   display: grid;
@@ -1785,10 +1849,9 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-radius: 10px;
+  padding: 8px 14px;
   min-width: 52px;
 }
 .lSmallStatVal {

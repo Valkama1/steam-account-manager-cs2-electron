@@ -3,6 +3,7 @@ import styles from "../App.module.css";
 import { CloseIcon, RefreshIcon, CheckIcon } from "./icons.jsx";
 import ModalShell from "./ModalShell.jsx";
 
+
 function timeAgo(iso) {
   const ms    = Date.now() - new Date(iso).getTime();
   const mins  = Math.floor(ms / 60000);
@@ -36,11 +37,11 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
   }
 
   return (
-    <div className={styles.overlay} onMouseDown={onClose}>
-      <div className={`${styles.modal} ${styles.watchlistModal}`} onMouseDown={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} className={styles.watchlistModal}>
+      {(close) => (<>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>Ban Watcher</span>
-          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
+          <button className={styles.modalClose} onClick={close}><CloseIcon size={14} /></button>
         </div>
 
         <div className={styles.watchlistAddRow}>
@@ -139,7 +140,7 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
             {checking ? "Checking…" : <><RefreshIcon size={13} />{"  Check Now"}</>}
           </button>
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   );
 }

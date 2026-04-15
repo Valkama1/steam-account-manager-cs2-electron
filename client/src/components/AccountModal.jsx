@@ -2,6 +2,7 @@ import { useState } from "react";
 import styles from "../App.module.css";
 import { PrimeIcon, PremierIcon, PremierRatingBadge, CloseIcon, CheckIcon, DeleteIcon, RefreshIcon, PlusIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired } from "../cooldown.js";
+import ModalShell from "./ModalShell.jsx";
 
 function Toggle({ label, subtitle, icon, checked, onChange }) {
   return (
@@ -75,11 +76,11 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
   }
 
   return (
-    <div className={styles.overlay} onMouseDown={onClose}>
-      <div className={styles.modal} onMouseDown={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose}>
+      {(close) => (<>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}>{isEdit ? "Edit Account" : "Add Account"}</span>
-          <button className={styles.modalClose} onClick={onClose}><CloseIcon size={14} /></button>
+          <button className={styles.modalClose} onClick={close}><CloseIcon size={14} /></button>
         </div>
 
         <div className={styles.modalScrollBody}>
@@ -160,7 +161,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
             {formErr && <p className={styles.formErr}>{formErr}</p>}
 
             <div className={styles.modalActions}>
-              <button type="button" className={styles.cancelBtn} onClick={onClose}>Cancel</button>
+              <button type="button" className={styles.cancelBtn} onClick={close}>Cancel</button>
               <button type="submit" className={styles.addBtn} disabled={busy}>
                 {busy ? <><RefreshIcon size={14} /> Saving…</> : isEdit ? <><CheckIcon size={14} /> Save</> : <><PlusIcon size={14} /> Add Account</>}
               </button>
@@ -190,7 +191,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   );
 }
