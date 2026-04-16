@@ -177,12 +177,14 @@ app.delete("/api/accounts/:id", (req, res) => {
 let switchQueue = Promise.resolve();
 
 app.post("/api/switch/:id", (req, res) => {
-  switchQueue = switchQueue.then(() => doSwitch(req, res));
+  switchQueue = switchQueue.then(() => doSwitch(req.params.id, res));
 });
 
-async function doSwitch(req, res) {
+// doSwitch(accountId, res) — shared by /api/switch/:id and the automation endpoint.
+// Writes the HTTP response itself; callers must not write res after this.
+async function doSwitch(accountId, res) {
   const accounts = readDB();
-  const account  = accounts.find(a => a.id === req.params.id);
+  const account  = accounts.find(a => a.id === accountId);
   if (!account) return res.status(404).json({ error: "not found" });
 
   const username   = account.name.toLowerCase();
@@ -335,6 +337,121 @@ app.delete("/api/notifications", (_req, res) => {
 app.delete("/api/notifications/:id", (req, res) => {
   clearOneNotification(req.params.id);
   res.json({ ok: true });
+});
+
+// ── Automation API ────────────────────────────────────────────────────────────
+// These endpoints are designed to be called by external programs without the UI.
+// All endpoints return JSON. The server listens on http://localhost:3001.
+
+// Drop week logic (mirrors client/src/cooldown.js).
+// CS2 drops reset every Wednesday at 01:00 UTC.
+function getCurrentWeekStart() {
+  const now  = new Date();
+  const day  = now.getUTCDay();
+  const hour = now.getUTCHours();
+  let daysBack;
+  if      (day === 3 && hour >= 1) daysBack = 0;
+  else if (day === 3)              daysBack = 7;
+  else if (day > 3)                daysBack = day - 3;
+  else                             daysBack = day + 4;
+  const d = new Date(now);
+  d.setUTCDate(now.getUTCDate() - daysBack);
+  d.setUTCHours(1, 0, 0, 0);
+  return d.toISOString();
+}
+
+function isDropEligible(acc) {
+  const weekStart = getCurrentWeekStart();
+  if (!acc.prime) return false;
+  if ((acc.weeklyDrops || []).some(d => d.weekStart === weekStart)) return false;
+  if (acc.vacBanned || (acc.gameBans || 0) > 0) return false;
+  const nextReset = new Date(weekStart).getTime() + 7 * 24 * 60 * 60 * 1000;
+  if (acc.expires && new Date(acc.expires) > new Date() && new Date(acc.expires).getTime() > nextReset)
+    return false;
+  return true;
+}
+
+// GET /api/automation — list all automation endpoints
+app.get("/api/automation", (_req, res) => {
+  const base = `http://localhost:${PORT}`;
+  res.json({
+    description: "Steam Manager automation API",
+    weekStart: getCurrentWeekStart(),
+    endpoints: [
+      { method: "GET",    url: `${base}/api/accounts`,                    description: "List all accounts" },
+      { method: "PATCH",  url: `${base}/api/accounts/:id`,                description: "Update any account field (e.g. weeklyDrops)" },
+      { method: "POST",   url: `${base}/api/switch/:id`,                  description: "Switch Steam to an account by id" },
+      { method: "POST",   url: `${base}/api/accounts/:id/drop`,           description: "Mark account as having received a drop this week" },
+      { method: "DELETE", url: `${base}/api/accounts/:id/drop`,           description: "Remove the current week's drop mark from an account" },
+      { method: "GET",    url: `${base}/api/automation/next-drop`,        description: "Find the next Prime account without a drop this week" },
+      { method: "POST",   url: `${base}/api/automation/next-drop/switch`, description: "Switch Steam to the next drop-eligible account" },
+      { method: "GET",    url: `${base}/api/steam-active`,                description: "Check if Steam is running and which account is logged in" },
+    ],
+  });
+});
+
+// POST /api/accounts/:id/drop — mark current week's drop as received (idempotent)
+app.post("/api/accounts/:id/drop", (req, res) => {
+  const db  = readDB();
+  const idx = db.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "not found" });
+  const weekStart = getCurrentWeekStart();
+  const drops     = db[idx].weeklyDrops || [];
+  if (!drops.some(d => d.weekStart === weekStart)) {
+    db[idx].weeklyDrops = [...drops, { weekStart }];
+    writeDB(db);
+  }
+  res.json({ ok: true, weekStart, account: sanitize(db[idx]) });
+});
+
+// DELETE /api/accounts/:id/drop — remove current week's drop mark
+app.delete("/api/accounts/:id/drop", (req, res) => {
+  const db  = readDB();
+  const idx = db.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "not found" });
+  const weekStart     = getCurrentWeekStart();
+  db[idx].weeklyDrops = (db[idx].weeklyDrops || []).filter(d => d.weekStart !== weekStart);
+  writeDB(db);
+  res.json({ ok: true, weekStart, account: sanitize(db[idx]) });
+});
+
+// GET /api/automation/next-drop — peek at the next eligible account without switching
+// Must be before /:id routes so "next-drop" isn't treated as an id
+app.get("/api/automation/next-drop", (_req, res) => {
+  const weekStart = getCurrentWeekStart();
+  const accounts  = readDB();
+  const eligible  = accounts.filter(isDropEligible);
+  const next      = eligible[0] ?? null;
+  res.json({
+    found:         !!next,
+    weekStart,
+    remaining:     eligible.length,
+    account:       next ? sanitize(next) : null,
+  });
+});
+
+// POST /api/automation/next-drop/switch — switch to the next drop-eligible account
+app.post("/api/automation/next-drop/switch", (_req, res) => {
+  switchQueue = switchQueue.then(async () => {
+    const weekStart = getCurrentWeekStart();
+    const accounts  = readDB();
+    const eligible  = accounts.filter(isDropEligible);
+    const next      = eligible[0] ?? null;
+    if (!next) return res.json({
+      found: false,
+      weekStart,
+      message: "All eligible accounts have already received a drop this week",
+    });
+    // Intercept the switch response to add account info before sending
+    const origJson = res.json.bind(res);
+    res.json = (body) => {
+      res.json = origJson;
+      return origJson(body.ok
+        ? { ...body, found: true, remaining: eligible.length - 1, weekStart, account: sanitize(next) }
+        : body);
+    };
+    await doSwitch(next.id, res);
+  });
 });
 
 // ── Static (production / Electron) ───────────────────────────────────────────
