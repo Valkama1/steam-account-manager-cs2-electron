@@ -100,7 +100,7 @@ export default function AccountModal({ mode, acc, onClose, onAdd, onEdit, onDele
                 checked={premierReady} onChange={setPremierReady} icon={<PremierIcon />} />
             </div>
 
-            <label className={styles.label}>Premier Rating <span>(optional — e.g. 15250)</span></label>
+            <label className={styles.label}>Premier Rating <span>(manual — auto-filled from Leetify if linked)</span></label>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <input
                 value={premierRating}

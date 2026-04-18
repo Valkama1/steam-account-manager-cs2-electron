@@ -5,12 +5,13 @@ const path            = require("path");
 const { exec, execFile, spawn } = require("child_process");
 const { v4: uuidv4 }  = require("uuid");
 
-const { encryptPassword, decryptPassword } = require("./crypto.js");
+const { encryptPassword, decryptPassword, encryptWithKey, decryptWithKey, ENC_PREFIX } = require("./crypto.js");
 const { readConfig, writeConfig }                                   = require("./config.js");
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
 const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin, setAutoLoginRegistry } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
 const { readNotifications, addNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
+const auth = require("./auth.js");
 
 const DEBUG = process.env.DEBUG === "1";
 const dbg = (...args) => { if (DEBUG) console.log(...args); };
@@ -21,16 +22,92 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
+// ── Auth middleware ───────────────────────────────────────────────────────────
+
+function requireUnlocked(req, res, next) {
+  // In legacy mode (no master password set), vault is always unlocked
+  const s = auth.status();
+  if (s.legacyMode || s.hasAuth === false) return next(); // no auth configured at all
+  if (!auth.isUnlocked()) return res.status(401).json({ error: "Vault is locked", locked: true });
+  next();
+}
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
+
+// GET /api/auth/status
+app.get("/api/auth/status", (_req, res) => {
+  res.json(auth.status());
+});
+
+// POST /api/auth/setup  { masterPassword }  → { ok, recoveryKey }
+app.post("/api/auth/setup", (req, res) => {
+  const { masterPassword } = req.body;
+  if (!masterPassword) return res.status(400).json({ error: "masterPassword required" });
+  const result = auth.setup(masterPassword);
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
+// POST /api/auth/unlock  { masterPassword, totpCode? }  → { ok }
+app.post("/api/auth/unlock", (req, res) => {
+  const { masterPassword, totpCode } = req.body;
+  if (!masterPassword) return res.status(400).json({ error: "masterPassword required" });
+  const result = auth.unlock(masterPassword, totpCode);
+  if (!result.ok) return res.status(401).json(result);
+  res.json(result);
+});
+
+// POST /api/auth/lock
+app.post("/api/auth/lock", (_req, res) => {
+  auth.lock();
+  res.json({ ok: true });
+});
+
+// POST /api/auth/recover  { recoveryKey, newMasterPassword }  → { ok }
+app.post("/api/auth/recover", (req, res) => {
+  const { recoveryKey, newMasterPassword } = req.body;
+  if (!recoveryKey || !newMasterPassword)
+    return res.status(400).json({ error: "recoveryKey and newMasterPassword required" });
+  const result = auth.recover(recoveryKey, newMasterPassword);
+  if (!result.ok) return res.status(401).json(result);
+  res.json(result);
+});
+
+// POST /api/auth/totp/setup  → { secret, uri }  (vault must be unlocked)
+app.post("/api/auth/totp/setup", requireUnlocked, (_req, res) => {
+  const result = auth.setupTotp();
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
+// POST /api/auth/totp/confirm  { secret, code }  → { ok }
+app.post("/api/auth/totp/confirm", requireUnlocked, (req, res) => {
+  const { secret, code } = req.body;
+  if (!secret || !code) return res.status(400).json({ error: "secret and code required" });
+  const result = auth.confirmTotp(secret, String(code));
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
+// POST /api/auth/totp/disable  { code }  → { ok }
+app.post("/api/auth/totp/disable", requireUnlocked, (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: "TOTP code required" });
+  const result = auth.disableTotp(String(code));
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
-app.get("/api/accounts", (req, res) => {
+app.get("/api/accounts", requireUnlocked, (req, res) => {
   res.json(readDB().map(sanitize));
 });
 
 // ── Batch refresh all accounts ─────────────────────────────────────────────
 // Must be before /:id so Express doesn't treat "refresh-all" as an id.
 
-app.post("/api/accounts/refresh-all", async (_req, res) => {
+app.post("/api/accounts/refresh-all", requireUnlocked, async (_req, res) => {
   const accounts = readDB();
   const withId   = accounts.filter(a => a.steamId64);
   if (!withId.length) return res.json(accounts.map(sanitize));
@@ -45,15 +122,34 @@ app.post("/api/accounts/refresh-all", async (_req, res) => {
 
   // GetOwnedGames can't be batched — run 5 at a time to stay within rate limits
   const gameMap = {};
-  let cursor = 0;
+  let gameCursor = 0;
   async function gameWorker() {
-    while (cursor < withId.length) {
-      const acc = withId[cursor++];
+    while (gameCursor < withId.length) {
+      const acc = withId[gameCursor++];
       const g = await fetchGameData(acc.steamId64);
       if (g) gameMap[acc.steamId64] = g;
     }
   }
   await Promise.all(Array.from({ length: Math.min(5, withId.length) }, gameWorker));
+
+  // Leetify has no batch endpoint — run 2 at a time to avoid rate limiting
+  const leetifyMap = {};
+  let leetifyCursor = 0;
+  async function leetifyWorker() {
+    while (leetifyCursor < withId.length) {
+      const acc = withId[leetifyCursor++];
+      const profile = await fetchLeetifyProfile(acc.steamId64);
+      if (profile?.found) {
+        leetifyMap[acc.steamId64] = {
+          premierRank:   profile.premierRank,
+          hsPct:         profile.hsPct,
+          winRate:       profile.winRate,
+          leetifyRating: profile.leetifyRating,
+        };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(2, withId.length) }, leetifyWorker));
 
   // Write updates + detect new bans
   for (const acc of withId) {
@@ -77,6 +173,11 @@ app.post("/api/accounts/refresh-all", async (_req, res) => {
       ...(summary && { avatar: summary.avatar, profileName: summary.profileName }),
       ...(bans    && { vacBanned: bans.vacBanned, gameBans: bans.gameBans, daysSinceLastBan: bans.daysSinceLastBan }),
       ...(games   && { cs2Hours: games.cs2Hours, cs2LastPlayed: games.cs2LastPlayed }),
+      ...(leetifyMap[acc.steamId64] && {
+        ...(leetifyMap[acc.steamId64].premierRank   != null && { leetifyPremierRating: leetifyMap[acc.steamId64].premierRank   }),
+        ...(leetifyMap[acc.steamId64].winRate        != null && { leetifyWinRate:       leetifyMap[acc.steamId64].winRate        }),
+        ...(leetifyMap[acc.steamId64].leetifyRating  != null && { leetifyRating:        leetifyMap[acc.steamId64].leetifyRating  }),
+      }),
     };
   }
 
@@ -84,7 +185,7 @@ app.post("/api/accounts/refresh-all", async (_req, res) => {
   res.json(accounts.map(sanitize));
 });
 
-app.post("/api/accounts", async (req, res) => {
+app.post("/api/accounts", requireUnlocked, async (req, res) => {
   const { name, alias, prime, premierReady, expires, cooldownInput, cooldownType, profileUrl, password } = req.body;
   if (!name) return res.status(400).json({ error: "name is required" });
   const steamFields = await fetchSteamFields(profileUrl);
@@ -103,23 +204,102 @@ app.post("/api/accounts", async (req, res) => {
   res.status(201).json(sanitize(account));
 });
 
-app.get("/api/accounts/export", (_req, res) => {
-  const accounts = readDB().map(sanitize); // never export raw passwords
+// GET /api/accounts/export — password-free export (backwards compat)
+app.get("/api/accounts/export", requireUnlocked, (_req, res) => {
+  const accounts = readDB().map(sanitize); // strips passwords
   res.setHeader("Content-Disposition", `attachment; filename="steam-manager-export-${new Date().toISOString().slice(0,10)}.json"`);
   res.setHeader("Content-Type", "application/json");
   res.send(JSON.stringify(accounts, null, 2));
 });
 
-app.post("/api/accounts/import", (req, res) => {
-  const incoming = req.body;
-  if (!Array.isArray(incoming)) return res.status(400).json({ error: "Expected an array of accounts" });
-  const existing = readDB();
+// POST /api/accounts/export-secure  { passphrase }
+// Returns a JSON blob with passwords preserved, vault key wrapped under passphrase.
+app.post("/api/accounts/export-secure", requireUnlocked, (req, res) => {
+  const { passphrase } = req.body;
+  if (!passphrase) return res.status(400).json({ error: "passphrase required" });
+
+  const wrapped = auth.wrapKeyForExport(passphrase);
+  if (!wrapped.ok) return res.status(400).json({ error: wrapped.error });
+
+  // Include raw (still-encrypted) password and sharedSecret fields — they stay
+  // encrypted with the vault key and will be re-keyed on import.
+  const accounts = readDB().map(({ password, sharedSecret, ...rest }) => ({
+    ...rest,
+    ...(password     && { password }),
+    ...(sharedSecret && { sharedSecret }),
+  }));
+
+  res.json({
+    version:      2,
+    exportedAt:   new Date().toISOString(),
+    exportSalt:   wrapped.exportSalt,
+    vaultKeyEnc:  wrapped.vaultKeyEnc,
+    accounts,
+  });
+});
+
+// POST /api/accounts/import
+// Accepts either:
+//   - a plain array (legacy export, no passwords)
+//   - { version: 2, exportSalt, vaultKeyEnc, accounts, passphrase } (secure export)
+app.post("/api/accounts/import", requireUnlocked, (req, res) => {
+  const body = req.body;
+
+  // ── secure export (v2) ────────────────────────────────────────────────────
+  if (body && body.version === 2) {
+    const { passphrase, exportSalt, vaultKeyEnc, accounts: incoming } = body;
+    if (!passphrase) return res.status(400).json({ error: "passphrase required for secure import" });
+    if (!Array.isArray(incoming)) return res.status(400).json({ error: "invalid export file" });
+
+    // Recover the export vault key
+    let exportKey;
+    try {
+      exportKey = auth.unwrapExportKey(passphrase, exportSalt, vaultKeyEnc);
+    } catch {
+      return res.status(401).json({ error: "Wrong passphrase" });
+    }
+
+    const currentKey = auth.getVaultKey();
+    if (!currentKey) return res.status(401).json({ error: "Vault is locked" });
+
+    const existing    = readDB();
+    const existingIds = new Set(existing.map(a => a.id));
+    let added = 0;
+
+    for (const acc of incoming) {
+      if (!acc.name) continue;
+      if (existingIds.has(acc.id)) continue;
+
+      // Re-encrypt password from export key → current vault key
+      let password = null;
+      if (acc.password && acc.password.startsWith(ENC_PREFIX)) {
+        try {
+          const plain = decryptWithKey(acc.password, exportKey);
+          password = encryptWithKey(plain, currentKey);
+        } catch {
+          password = null; // corrupted — drop it rather than crash
+        }
+      }
+
+      existing.push({ ...acc, id: acc.id || uuidv4(), password });
+      added++;
+    }
+
+    writeDB(existing);
+    return res.json({ added, total: existing.length });
+  }
+
+  // ── legacy export (plain array, no passwords) ─────────────────────────────
+  const incoming = Array.isArray(body) ? body : null;
+  if (!incoming) return res.status(400).json({ error: "Expected an array or a secure export object" });
+
+  const existing    = readDB();
   const existingIds = new Set(existing.map(a => a.id));
   let added = 0;
   for (const acc of incoming) {
     if (!acc.name) continue;
-    if (existingIds.has(acc.id)) continue; // skip duplicates
-    existing.push({ ...acc, id: acc.id || uuidv4(), password: null }); // never import passwords
+    if (existingIds.has(acc.id)) continue;
+    existing.push({ ...acc, id: acc.id || uuidv4(), password: null });
     added++;
   }
   writeDB(existing);
@@ -146,7 +326,7 @@ app.get("/api/accounts/:id/leetify", async (req, res) => {
   res.json(profile);
 });
 
-app.patch("/api/accounts/:id", async (req, res) => {
+app.patch("/api/accounts/:id", requireUnlocked, async (req, res) => {
   const accounts = readDB();
   const idx = accounts.findIndex(a => a.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
@@ -164,7 +344,7 @@ app.patch("/api/accounts/:id", async (req, res) => {
   res.json(sanitize(accounts[idx]));
 });
 
-app.delete("/api/accounts/:id", (req, res) => {
+app.delete("/api/accounts/:id", requireUnlocked, (req, res) => {
   const accounts = readDB();
   const filtered = accounts.filter(a => a.id !== req.params.id);
   if (filtered.length === accounts.length) return res.status(404).json({ error: "not found" });
@@ -176,7 +356,7 @@ app.delete("/api/accounts/:id", (req, res) => {
 
 let switchQueue = Promise.resolve();
 
-app.post("/api/switch/:id", (req, res) => {
+app.post("/api/switch/:id", requireUnlocked, (req, res) => {
   switchQueue = switchQueue.then(() => doSwitch(req.params.id, res));
 });
 

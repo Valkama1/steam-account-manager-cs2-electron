@@ -176,7 +176,7 @@ describe("fast-path: steamId64 in loginusers.vdf, with password", () => {
     );
   });
 
-  test("spawns powershell.exe with 2fa.ps1 when sharedSecret is set", async () => {
+  test("does NOT spawn powershell even when sharedSecret is set (2FA handled manually)", async () => {
     writeVdf(TARGET_ID);
     const acc = await seedAccount({
       steamId64:    TARGET_ID,
@@ -186,9 +186,7 @@ describe("fast-path: steamId64 in loginusers.vdf, with password", () => {
     await request(app).post(`/api/switch/${acc.id}`);
 
     const psCall = mockSpawn.mock.calls.find(c => c[0] === "powershell.exe");
-    expect(psCall).toBeDefined();
-    // Should pass the 2fa.ps1 script path
-    expect(psCall[1]).toContainEqual(expect.stringContaining("2fa.ps1"));
+    expect(psCall).toBeUndefined();
   });
 });
 
@@ -221,7 +219,7 @@ describe("password-path: account not in loginusers.vdf, password stored", () => 
     expect(execFileCalls.some(c => c.args?.includes("RememberPassword"))).toBe(false);
   });
 
-  test("spawns powershell.exe with 2fa.ps1 when sharedSecret is set", async () => {
+  test("does NOT spawn powershell even when sharedSecret is set (2FA handled manually)", async () => {
     const acc = await seedAccount({
       password:     encryptPassword("secret"),
       sharedSecret: "AABBCCDDEE==",
@@ -229,8 +227,7 @@ describe("password-path: account not in loginusers.vdf, password stored", () => 
     await request(app).post(`/api/switch/${acc.id}`);
 
     const psCall = mockSpawn.mock.calls.find(c => c[0] === "powershell.exe");
-    expect(psCall).toBeDefined();
-    expect(psCall[1]).toContainEqual(expect.stringContaining("2fa.ps1"));
+    expect(psCall).toBeUndefined();
   });
 
   test("does NOT spawn powershell when no sharedSecret", async () => {

@@ -5,11 +5,12 @@ import { isExpired, getCurrentWeekStart } from "./cooldown.js";
 import styles from "./App.module.css";
 import { API, THEME_PRESETS, SETTINGS_KEY, SORT_OPTIONS } from "./constants.js";
 import { readSettings, readFilterCookie, writeFilterCookie, sortAccounts } from "./utils.js";
+import SetupScreen from "./components/SetupScreen.jsx";
+import UnlockScreen from "./components/UnlockScreen.jsx";
 import AccountCard from "./components/AccountCard.jsx";
 import AccountModal from "./components/AccountModal.jsx";
 import CooldownHistoryModal from "./components/CooldownHistoryModal.jsx";
 import DropHistoryModal from "./components/DropHistoryModal.jsx";
-import LeetifyModal from "./components/LeetifyModal.jsx";
 import DropCountdown from "./components/DropCountdown.jsx";
 import Section from "./components/Section.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
@@ -18,13 +19,31 @@ import NotificationsPanel from "./components/NotificationsPanel.jsx";
 import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon } from "./components/icons.jsx";
 
 export default function App() {
+  // Auth state: null = loading, then { hasAuth, legacyMode, locked, totpEnabled }
+  const [authStatus, setAuthStatus] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then(r => r.json())
+      .then(setAuthStatus)
+      .catch(() => setAuthStatus({ hasAuth: false, legacyMode: false, locked: false, totpEnabled: false }));
+  }, []);
+
+  async function handleLockVault() {
+    await fetch("/api/auth/lock", { method: "POST" });
+    setAuthStatus(prev => ({ ...prev, locked: true }));
+  }
+
+  function refreshAuthStatus() {
+    fetch("/api/auth/status").then(r => r.json()).then(setAuthStatus).catch(() => {});
+  }
+
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [modal, setModal]         = useState(null);
   const [historyAcc, setHistoryAcc]       = useState(null);
   const [dropHistoryAcc, setDropHistoryAcc] = useState(null);
-  const [statsAcc, setStatsAcc]           = useState(null);
   const [leetifyCache, setLeetifyCache]   = useState({});
   const [apiKey, setApiKey]             = useState("");
   const [keyDraft, setKeyDraft]         = useState("");
@@ -96,6 +115,24 @@ export default function App() {
         .then(r => r.json())
         .then(d => {
           setLeetifyCache(prev => ({ ...prev, [a.id]: !!(d?.found) }));
+          // Persist Leetify stats if present and changed
+          if (d?.found) {
+            const payload = {
+              ...(d.premierRank   != null && d.premierRank   !== a.leetifyPremierRating && { leetifyPremierRating: d.premierRank   }),
+              ...(d.winRate       != null && d.winRate       !== a.leetifyWinRate        && { leetifyWinRate:       d.winRate       }),
+              ...(d.leetifyRating != null && d.leetifyRating !== a.leetifyRating         && { leetifyRating:        d.leetifyRating }),
+            };
+            if (Object.keys(payload).length > 0) {
+              fetch(`/api/accounts/${a.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              })
+                .then(r => r.ok ? r.json() : null)
+                .then(updated => { if (updated) setAccounts(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x)); })
+                .catch(() => {});
+            }
+          }
         })
         .catch(() => {});
     });
@@ -297,6 +334,34 @@ export default function App() {
     await fetchAccounts();
   }
 
+  // ── refresh Leetify data for one account ──
+  async function handleRefreshLeetify(acc) {
+    const r = await fetch(`${API}/${acc.id}/leetify`);
+    if (!r.ok) { addToast("Leetify fetch failed — check your API key", "error"); return; }
+    const d = await r.json();
+    if (!d?.found) { addToast("Account not found on Leetify", "error"); return; }
+    setLeetifyCache(prev => ({ ...prev, [acc.id]: true }));
+    const payload = {
+      ...(d.premierRank   != null && { leetifyPremierRating: d.premierRank   }),
+      ...(d.winRate       != null && { leetifyWinRate:       d.winRate       }),
+      ...(d.leetifyRating != null && { leetifyRating:        d.leetifyRating }),
+    };
+    if (Object.keys(payload).length > 0) {
+      const patch = await fetch(`${API}/${acc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (patch.ok) {
+        const updated = await patch.json();
+        setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, ...updated } : a));
+      }
+    }
+    addToast(d.premierRank != null
+      ? `Leetify rank updated: ${d.premierRank.toLocaleString()}`
+      : "Leetify profile found — no premier rank recorded", "success");
+  }
+
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
   async function handleRefreshAll() {
@@ -304,7 +369,10 @@ export default function App() {
     if (!withId.length) return;
     setRefreshingAll(true);
     const r = await fetch(`${API}/refresh-all`, { method: "POST" });
-    if (r.ok) setAccounts(await r.json());
+    if (r.ok) {
+      setAccounts(await r.json());
+      setLeetifyCache({}); // force background check to re-run with fresh Leetify data
+    }
     setRefreshingAll(false);
     const now = new Date();
     setLastRefreshed(now);
@@ -661,22 +729,21 @@ export default function App() {
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [focusedIdx]);
 
+  // ── Auth gate (all hooks above, conditional render below) ───────────────────
+  if (authStatus === null) {
+    return <div style={{ minHeight: "100vh", background: "var(--bg)" }} />;
+  }
+  if (!authStatus.hasAuth && !authStatus.legacyMode) {
+    return <SetupScreen onSetupComplete={refreshAuthStatus} />;
+  }
+  if (authStatus.hasAuth && authStatus.locked) {
+    return <UnlockScreen totpEnabled={authStatus.totpEnabled} onUnlocked={refreshAuthStatus} />;
+  }
+
   return (
     <div className={styles.layout}>
       {/* ── sidebar ── */}
       <aside className={`${styles.sidebar} ${settings.sidebarCollapsed ? styles.sidebarCollapsed : ""}`}>
-        <div className={styles.sidebarHeader}>
-          <div className={styles.logo}>
-            <span className={styles.logoMark}>▣</span>
-            {!settings.sidebarCollapsed && <span className={styles.logoText}>STEAM<br /><em>MANAGER</em></span>}
-          </div>
-          {!settings.sidebarCollapsed && (
-            <button data-notif-trigger className={`${styles.notifHeaderBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
-              <BellIcon size={16} />
-              {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
-            </button>
-          )}
-        </div>
 
         <DropCountdown collapsed={settings.sidebarCollapsed} />
 
@@ -712,6 +779,11 @@ export default function App() {
         ) : (
           <div className={styles.sidebarIconRow}>
             <button className={styles.sidebarIconBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={14} /> Ban Watcher</button>
+            <button data-notif-trigger className={`${styles.sidebarIconBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
+              <BellIcon size={14} />
+              {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
+              {" "}Notifications
+            </button>
             <button className={styles.sidebarIconBtn} onClick={() => setSettingsOpen(true)} title="Settings"><SettingsIcon size={14} /> Settings</button>
           </div>
         )}
@@ -820,8 +892,8 @@ export default function App() {
                 onSetCooldown: handleSetCooldown,
                 onClearCooldown: handleClearCooldown,
                 onToggleFavorite: handleToggleFavorite,
-                onStats: setStatsAcc,
                 hasLeetify: !!leetifyCache[a.id],
+                onRefreshLeetify: leetifyKey ? handleRefreshLeetify : null,
                 draggable: isDraggable,
                 ...extra,
               });
@@ -909,9 +981,6 @@ export default function App() {
       {dropHistoryAcc && (
         <DropHistoryModal acc={dropHistoryAcc} onClose={() => setDropHistoryAcc(null)} />
       )}
-      {statsAcc && (
-        <LeetifyModal acc={statsAcc} onClose={() => setStatsAcc(null)} />
-      )}
       {notifOpen && (
         <NotificationsPanel
           notifications={notifications}
@@ -935,7 +1004,8 @@ export default function App() {
         <SettingsModal settings={settings} onChange={updateSetting} onClose={() => setSettingsOpen(false)}
           keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey}
           leetifyDraft={leetifyDraft} onLeetifyDraftChange={setLeetifyDraft} onSaveLeetifyKey={handleSaveLeetifyKey} leetifyKey={leetifyKey}
-          onClearCache={handleClearCache} />
+          onClearCache={handleClearCache} onLockVault={handleLockVault}
+          onSetupVault={() => setAuthStatus(prev => ({ ...prev, hasAuth: false, legacyMode: false }))} />
       )}
       <div className={styles.toastContainer}>
         {toasts.map(t => (

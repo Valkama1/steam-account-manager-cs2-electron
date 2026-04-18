@@ -4,10 +4,11 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import styles from "../App.module.css";
 import Badge from "./Badge.jsx";
-import { PrimeIcon, PremierIcon, PremierRatingBadge, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon, NoteIcon, DragHandleIcon, LeetifyIcon } from "./icons.jsx";
+import { PrimeIcon, PremierIcon, RefreshIcon, CloseIcon, EditIcon, TimerIcon, HistoryIcon, CheckIcon, SwitchIcon, StarIcon, StarFilledIcon, CopyIcon, NoteIcon, DragHandleIcon, LeetifyIcon } from "./icons.jsx";
 import { parseDuration, remainingStr, isExpired, getCurrentWeekStart } from "../cooldown.js";
 
-export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, onStats, hasLeetify = false, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, isDragOverlay = false }) {
+
+export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistory, onToggleDrop, onDropHistory, onSetCooldown, onClearCooldown, onToggleFavorite, onRefreshLeetify, hasLeetify = false, banned, active, isFocused = false, layout = "grid", showSteamId = true, showLoginName = true, showPlaytime = true, showPrimeBadge = true, showPremierBadge = true, draggable = false, isDragOverlay = false }) {
   const expired  = isExpired(acc.expires);
   const hasCd    = acc.expires && !expired;
   const rem      = hasCd ? remainingStr(acc.expires) : null;
@@ -33,6 +34,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const gotDrop        = drops.some(d => d.weekStart === weekStart);
   const hasDropHistory = drops.length > 0;
   const displayName    = acc.alias || acc.profileName || acc.name;
+  const displayRating  = acc.leetifyPremierRating ?? acc.premierRating;
   const hasBadges      = showPlaytime || showPrimeBadge || showPremierBadge;
   const hasFooter      = acc.prime || acc.hasPassword || acc.steamId64 || cdOpen;
 
@@ -129,11 +131,53 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
         </span>
       )}
       {showPremierBadge && (
-        acc.premierReady && acc.premierRating != null
-          ? <PremierRatingBadge rating={acc.premierRating} />
-          : <span className={`${styles.badgePremier} ${!acc.premierReady ? styles.badgeDim : ""}`}>
-              <PremierIcon size={10} /> Premier
-            </span>
+        <span className={`${styles.badgePremier} ${!acc.premierReady && displayRating == null ? styles.badgeDim : ""}`}>
+          <PremierIcon size={10} /> Premier
+        </span>
+      )}
+    </div>
+  );
+
+  const winRateNum  = acc.leetifyWinRate != null ? parseFloat(acc.leetifyWinRate) : null;
+  const ratingNum   = acc.leetifyRating  != null ? acc.leetifyRating              : null;
+  const tierColor   = displayRating == null ? "var(--dim)"
+    : displayRating >= 30000 ? "#f0c030"
+    : displayRating >= 25000 ? "#eb4b4b"
+    : displayRating >= 20000 ? "#d32ce6"
+    : displayRating >= 15000 ? "#8847ff"
+    : displayRating >= 10000 ? "#4b69ff"
+    : displayRating >= 5000  ? "#5e98d9"
+    : "#b0c3d9";
+  const winRateColor = winRateNum == null ? "var(--text)"
+    : winRateNum >= 60 ? "var(--green)"
+    : winRateNum >= 50 ? "color-mix(in srgb, var(--green) 50%, var(--yellow))"
+    : winRateNum >= 40 ? "var(--text)" : "var(--yellow)";
+  const ratingColor  = ratingNum == null ? "var(--text)"
+    : ratingNum > 0 ? "var(--green)" : ratingNum < 0 ? "var(--red)" : "var(--text)";
+
+  const premierRankEl = showPremierBadge && displayRating != null && (
+    <div className={styles.premierRankRow} style={{ borderLeftColor: tierColor, background: `color-mix(in srgb, ${tierColor} 6%, transparent)` }}>
+      <div className={styles.premierRankMain}>
+        <PremierIcon size={12} />
+        <span className={styles.premierRankNum} style={{ color: tierColor }}>
+          {displayRating.toLocaleString()}
+        </span>
+      </div>
+      {(winRateNum != null || ratingNum != null) && (
+        <div className={styles.premierRankStats}>
+          {winRateNum != null && (
+            <div className={styles.premierRankStat}>
+              <span className={styles.premierRankStatVal} style={{ color: winRateColor }}>{winRateNum.toFixed(0)}%</span>
+              <span className={styles.premierRankStatKey}>WR</span>
+            </div>
+          )}
+          {ratingNum != null && (
+            <div className={styles.premierRankStat}>
+              <span className={styles.premierRankStatVal} style={{ color: ratingColor }}>{ratingNum >= 0 ? "+" : ""}{ratingNum.toFixed(1)}</span>
+              <span className={styles.premierRankStatKey}>LR</span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -166,6 +210,11 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
       {acc.steamId64 && (
         <button className={styles.ctxItem} onClick={handleRefresh} disabled={refreshing}>
           <RefreshIcon size={16} /> {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      )}
+      {acc.steamId64 && onRefreshLeetify && (
+        <button className={styles.ctxItem} onClick={() => { setCtxPos(null); onRefreshLeetify(acc); }}>
+          <LeetifyIcon size={16} /> Refresh Leetify
         </button>
       )}
       <button className={styles.ctxItem} onClick={() => { setCtxPos(null); setCdOpen(true); }}>
@@ -232,6 +281,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
           )}
           {acc.notes && <NotesChip note={acc.notes} />}
           {badgesEl}
+          {premierRankEl}
         </div>
         {statusEl}
         <div className={styles.cardListActions}>
@@ -276,8 +326,8 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-          {hasLeetify && onStats && (
-            <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); onStats(acc); }} title="Leetify Stats">
+          {hasLeetify && acc.steamId64 && (
+            <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); window.open(`https://leetify.com/app/profile/${acc.steamId64}`, "_blank"); }} title="View on Leetify">
               <LeetifyIcon size={13} />
             </button>
           )}
@@ -323,6 +373,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
         </div>
       </div>
       {badgesEl}
+      {premierRankEl}
       {statusEl}
       {hasFooter && (
         <div className={styles.cardFooter}>
@@ -369,8 +420,8 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
       )}
       {/* Corner cluster: Leetify icon + star */}
       <div className={styles.cardCornerActions}>
-        {hasLeetify && onStats && (
-          <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); onStats(acc); }} title="Leetify Stats">
+        {hasLeetify && acc.steamId64 && (
+          <button className={styles.lCardBtn} onClick={e => { e.stopPropagation(); window.open(`https://leetify.com/app/profile/${acc.steamId64}`, "_blank"); }} title="View on Leetify">
             <LeetifyIcon size={13} />
           </button>
         )}

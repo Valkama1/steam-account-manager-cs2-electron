@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import styles from "../App.module.css";
 import { THEME_PRESETS, COLOR_LABELS, AUTO_REFRESH_OPTIONS } from "../constants.js";
 import { InfoIcon, CloseIcon, DownloadIcon, UploadIcon, DeleteIcon } from "./icons.jsx";
 import ModalShell from "./ModalShell.jsx";
+import TotpSetupModal from "./TotpSetupModal.jsx";
 
 export function InfoTip({ text }) {
   const ref = useRef(null);
@@ -52,32 +53,107 @@ export function SettingRow({ label, checked, onChange, hint }) {
   );
 }
 
-export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, leetifyDraft, onLeetifyDraftChange, onSaveLeetifyKey, leetifyKey, onClearCache }) {
+export default function SettingsModal({ settings, onChange, onClose, keyDraft, onKeyDraftChange, onSaveKey, apiKey, leetifyDraft, onLeetifyDraftChange, onSaveLeetifyKey, leetifyKey, onClearCache, onLockVault, onSetupVault }) {
   const [tab, setTab] = useState("display");
   const [confirmClear, setConfirmClear] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
+  const [exportPhrase, setExportPhrase]   = useState("");
+  const [exportFlow, setExportFlow]       = useState(null); // null | "prompt" | "loading" | "error"
+  const [pendingImport, setPendingImport] = useState(null); // parsed v2 file awaiting passphrase
+  const [importPhrase, setImportPhrase]   = useState("");
+  const [authStatus, setAuthStatus] = useState(null);
+  const [totpOpen, setTotpOpen]     = useState(false);
+  const [totpDisableCode, setTotpDisableCode] = useState("");
+  const [totpDisableErr, setTotpDisableErr]   = useState("");
 
-  function handleExport() {
-    window.open("/api/accounts/export", "_blank");
+  useEffect(() => {
+    if (tab !== "security") return;
+    fetch("/api/auth/status").then(r => r.json()).then(setAuthStatus).catch(() => {});
+  }, [tab]);
+
+  async function handleDisableTotp() {
+    setTotpDisableErr("");
+    const r = await fetch("/api/auth/totp/disable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: totpDisableCode }),
+    });
+    const d = await r.json();
+    if (!r.ok) { setTotpDisableErr(d.error || "Failed"); return; }
+    setTotpDisableCode("");
+    setAuthStatus(prev => ({ ...prev, totpEnabled: false }));
   }
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+
+  async function handleExportSecure(e) {
+    e.preventDefault();
+    setExportFlow("loading");
+    try {
+      const r = await fetch("/api/accounts/export-secure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passphrase: exportPhrase }),
+      });
+      if (!r.ok) {
+        const d = await r.json();
+        setImportStatus(`Export error: ${d.error}`);
+        setExportFlow(null);
+        return;
+      }
+      const data = await r.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `steam-manager-secure-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportFlow(null);
+      setExportPhrase("");
+    } catch {
+      setImportStatus("Export failed — cannot reach server.");
+      setExportFlow(null);
+    }
+  }
+
+  // ── Import ───────────────────────────────────────────────────────────────────
 
   async function handleImport(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+    setImportStatus(null);
     try {
       const text = await file.text();
       const data = JSON.parse(text);
+      // v2 secure export — hold it and ask for passphrase before sending
+      if (data && data.version === 2) {
+        setPendingImport(data);
+        setImportPhrase("");
+        return;
+      }
+      await doImport(data, null);
+    } catch {
+      setImportStatus("Invalid file.");
+    }
+  }
+
+  async function doImport(data, passphrase) {
+    try {
+      const body = passphrase ? { ...data, passphrase } : data;
       const r = await fetch("/api/accounts/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       });
       const result = await r.json();
       if (!r.ok) { setImportStatus(`Error: ${result.error}`); return; }
       setImportStatus(`Imported ${result.added} account(s) — ${result.total} total`);
+      setPendingImport(null);
+      setImportPhrase("");
     } catch {
-      setImportStatus("Invalid file");
+      setImportStatus("Import failed — cannot reach server.");
     }
   }
 
@@ -94,6 +170,7 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
   }
 
   return (
+    <>
     <ModalShell onClose={onClose} className={styles.settingsModal}>
       {(close) => (<>
         <div className={styles.modalHeader}>
@@ -102,8 +179,9 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
         </div>
 
         <div className={styles.settingsTabs}>
-          <button className={`${styles.settingsTab} ${tab === "display" ? styles.settingsTabActive : ""}`} onClick={() => setTab("display")}>Display</button>
-          <button className={`${styles.settingsTab} ${tab === "colors"  ? styles.settingsTabActive : ""}`} onClick={() => setTab("colors")}>Colors</button>
+          <button className={`${styles.settingsTab} ${tab === "display"   ? styles.settingsTabActive : ""}`} onClick={() => setTab("display")}>Display</button>
+          <button className={`${styles.settingsTab} ${tab === "colors"    ? styles.settingsTabActive : ""}`} onClick={() => setTab("colors")}>Colors</button>
+          <button className={`${styles.settingsTab} ${tab === "security"  ? styles.settingsTabActive : ""}`} onClick={() => setTab("security")}>Security</button>
         </div>
 
         <div className={styles.settingsScrollBody}>
@@ -192,19 +270,83 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
                 )}
               </div>
               <div className={styles.settingDivider} />
+
+              {/* ── Secure export ── */}
               <div className={styles.settingRow} style={{ cursor: "default" }}>
                 <span className={styles.settingRowLabel}>
-                  Export / Import
-                  <InfoTip text="Export saves all accounts (without passwords) as a JSON file. Import merges accounts from a previously exported file — duplicates are skipped." />
+                  Secure export
+                  <InfoTip text="Exports all accounts including encrypted passwords, protected by a passphrase you choose. Use this when migrating to another machine." />
                 </span>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <button className={styles.resetThemeBtn} onClick={handleExport}><DownloadIcon size={13} /> Export</button>
-                  <label className={styles.resetThemeBtn} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <UploadIcon size={13} /> Import
-                    <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
-                  </label>
-                </div>
+                <button
+                  className={styles.resetThemeBtn}
+                  onClick={() => setExportFlow(exportFlow === "prompt" ? null : "prompt")}
+                >
+                  <DownloadIcon size={13} /> Export
+                </button>
               </div>
+              {exportFlow === "prompt" && (
+                <form onSubmit={handleExportSecure} style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+                  <input
+                    className={styles.apiKeyInput}
+                    type="password"
+                    placeholder="Export passphrase…"
+                    value={exportPhrase}
+                    onChange={e => setExportPhrase(e.target.value)}
+                    autoFocus
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="submit"
+                    className={styles.resetThemeBtn}
+                    disabled={exportFlow === "loading" || !exportPhrase}
+                  >
+                    {exportFlow === "loading" ? "…" : "Go"}
+                  </button>
+                </form>
+              )}
+
+              {/* ── Import ── */}
+              <div className={styles.settingRow} style={{ cursor: "default", marginTop: 4 }}>
+                <span className={styles.settingRowLabel}>
+                  Import
+                  <InfoTip text="Import from a previously exported file. Secure exports (v2) will ask for the passphrase used at export time. Duplicates are always skipped." />
+                </span>
+                <label className={styles.resetThemeBtn} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <UploadIcon size={13} /> Import
+                  <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
+                </label>
+              </div>
+              {pendingImport && (
+                <form
+                  onSubmit={e => { e.preventDefault(); doImport(pendingImport, importPhrase); }}
+                  style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}
+                >
+                  <input
+                    className={styles.apiKeyInput}
+                    type="password"
+                    placeholder="Passphrase used at export…"
+                    value={importPhrase}
+                    onChange={e => setImportPhrase(e.target.value)}
+                    autoFocus
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="submit"
+                    className={styles.resetThemeBtn}
+                    disabled={!importPhrase}
+                  >
+                    Import
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.resetThemeBtn}
+                    onClick={() => { setPendingImport(null); setImportPhrase(""); }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
+
               {importStatus && <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", margin: "4px 0 0" }}>{importStatus}</p>}
             </>
           )}
@@ -245,8 +387,112 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
               )}
             </>
           )}
+
+          {tab === "security" && (
+            <>
+              {!authStatus ? (
+                <p style={{ color: "var(--dim)", fontSize: 13, padding: "8px 0" }}>Loading…</p>
+              ) : authStatus.legacyMode ? (
+                <>
+                  <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 12, lineHeight: 1.6 }}>
+                    Your vault is currently in <strong style={{ color: "var(--text)" }}>legacy mode</strong> —
+                    account credentials are stored with an auto-generated key but no master password.
+                    Set a master password to protect your vault.
+                  </p>
+                  <div className={styles.settingRow} style={{ cursor: "default" }}>
+                    <span className={styles.settingRowLabel}>Vault protection</span>
+                    <button className={styles.resetThemeBtn} onClick={() => { close(); onSetupVault?.(); }}>
+                      Set master password
+                    </button>
+                  </div>
+                </>
+              ) : authStatus.hasAuth ? (
+                <>
+                  <div className={styles.settingRow} style={{ cursor: "default" }}>
+                    <span className={styles.settingRowLabel}>Vault status</span>
+                    <span style={{
+                      fontSize: 12,
+                      color: authStatus.locked ? "var(--yellow)" : "var(--green)",
+                      fontWeight: 600,
+                    }}>
+                      {authStatus.locked ? "Locked" : "Unlocked"}
+                    </span>
+                  </div>
+
+                  {!authStatus.locked && (
+                    <div className={styles.settingRow} style={{ cursor: "default" }}>
+                      <span className={styles.settingRowLabel}>Lock vault now</span>
+                      <button className={styles.resetThemeBtn} onClick={() => {
+                        close();
+                        onLockVault?.();
+                      }}>
+                        Lock
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={styles.settingDivider} />
+
+                  <div className={styles.settingRow} style={{ cursor: "default" }}>
+                    <span className={styles.settingRowLabel}>
+                      Two-factor authentication
+                      <InfoTip text="Requires a 6-digit code from an authenticator app (Google Authenticator, Authy, etc.) every time you unlock the vault." />
+                    </span>
+                    {authStatus.totpEnabled ? (
+                      <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>Enabled</span>
+                    ) : (
+                      <button
+                        className={styles.resetThemeBtn}
+                        disabled={authStatus.locked}
+                        onClick={() => setTotpOpen(true)}
+                      >
+                        Enable
+                      </button>
+                    )}
+                  </div>
+
+                  {authStatus.totpEnabled && !authStatus.locked && (
+                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        className={styles.apiKeyInput}
+                        placeholder="Enter current 2FA code to disable"
+                        value={totpDisableCode}
+                        onChange={e => setTotpDisableCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        style={{ maxWidth: 220 }}
+                      />
+                      <button
+                        className={styles.resetThemeBtn}
+                        style={{ color: "var(--red)" }}
+                        disabled={totpDisableCode.length < 6}
+                        onClick={handleDisableTotp}
+                      >
+                        Disable 2FA
+                      </button>
+                    </div>
+                  )}
+                  {totpDisableErr && (
+                    <p style={{ color: "var(--red)", fontSize: 12, marginTop: 4 }}>{totpDisableErr}</p>
+                  )}
+                </>
+              ) : (
+                <p style={{ fontSize: 13, color: "var(--dim)" }}>
+                  No vault configured. Restart the app to go through setup.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </>)}
     </ModalShell>
+
+    {totpOpen && (
+      <TotpSetupModal
+        onClose={() => {
+          setTotpOpen(false);
+          fetch("/api/auth/status").then(r => r.json()).then(setAuthStatus).catch(() => {});
+        }}
+      />
+    )}
+    </>
   );
 }

@@ -6,7 +6,23 @@ const DATA_DIR  = process.env.DATA_DIR || __dirname;
 const KEY_PATH  = process.env.TEST_KEY_PATH || path.join(DATA_DIR, ".key");
 const ENC_PREFIX = "enc:";
 
-function loadOrCreateKey() {
+/**
+ * Get the active vault key.
+ *
+ * Priority:
+ *  1. auth.js in-memory vault key (set after unlock/setup)
+ *  2. Legacy .key file (for test suites and bare installs without auth.js)
+ *  3. Generate a new key (fresh install, first run before auth.js is ready)
+ */
+function getKey() {
+  // Avoid circular require: require lazily so auth.js can require crypto.js
+  try {
+    const auth = require("./auth.js");
+    const key  = auth.getVaultKey();
+    if (key) return key;
+  } catch { /* auth.js not available (tests that don't load it) */ }
+
+  // Fallback: load or create the legacy .key file
   if (fs.existsSync(KEY_PATH)) {
     return Buffer.from(fs.readFileSync(KEY_PATH, "utf8").trim(), "hex");
   }
@@ -16,12 +32,21 @@ function loadOrCreateKey() {
   return key;
 }
 
-const ENCRYPTION_KEY = loadOrCreateKey();
+// Keep ENCRYPTION_KEY for backwards-compat (tests import it directly)
+const ENCRYPTION_KEY = (() => {
+  if (fs.existsSync(KEY_PATH)) {
+    return Buffer.from(fs.readFileSync(KEY_PATH, "utf8").trim(), "hex");
+  }
+  const key = crypto.randomBytes(32);
+  fs.writeFileSync(KEY_PATH, key.toString("hex"), { mode: 0o600 });
+  return key;
+})();
 
 function encryptPassword(plaintext) {
   if (!plaintext) return null;
+  const key = getKey();
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return ENC_PREFIX + iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted.toString("hex");
@@ -34,7 +59,8 @@ function decryptPassword(stored) {
   if (parts.length !== 3) return stored;
   const [ivHex, authTagHex, encHex] = parts;
   try {
-    const decipher = crypto.createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, Buffer.from(ivHex, "hex"));
+    const key = getKey();
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
     decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
     return decipher.update(Buffer.from(encHex, "hex")) + decipher.final("utf8");
   } catch (e) {
@@ -61,4 +87,28 @@ function generateSteamGuardCode(sharedSecret) {
   return code;
 }
 
-module.exports = { encryptPassword, decryptPassword, generateSteamGuardCode, ENC_PREFIX, ENCRYPTION_KEY };
+/**
+ * Encrypt/decrypt with an explicit key — used for import re-encryption where
+ * the source and destination keys differ.
+ */
+function encryptWithKey(plaintext, key) {
+  if (!plaintext) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return ENC_PREFIX + iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted.toString("hex");
+}
+
+function decryptWithKey(stored, key) {
+  if (!stored) return null;
+  if (!stored.startsWith(ENC_PREFIX)) return stored;
+  const parts = stored.slice(ENC_PREFIX.length).split(":");
+  if (parts.length !== 3) return stored;
+  const [ivHex, authTagHex, encHex] = parts;
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+  return decipher.update(Buffer.from(encHex, "hex")) + decipher.final("utf8");
+}
+
+module.exports = { encryptPassword, decryptPassword, encryptWithKey, decryptWithKey, generateSteamGuardCode, ENC_PREFIX, ENCRYPTION_KEY };

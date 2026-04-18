@@ -9,10 +9,11 @@ export const COLOR_LABELS = [
   ["bg", "Background"], ["surface", "Sidebar"],
   ["card", "Card"], ["card-h", "Card hover"],
   ["border", "Border"], ["accent", "Accent"],
-  ["accent-d", "Accent dark"], ["text", "Text"],
+  ["accent-d", "Accent 2"], ["text", "Text"],
   ["dim", "Dim text"], ["muted", "Muted"],
   ["green", "Green"], ["yellow", "Yellow"],
-  ["red", "Red"],
+  ["red", "Red"], ["orange", "Orange"],
+  ["cyan", "Cyan"], ["pink", "Pink"],
 ];
 
 export const AUTO_REFRESH_OPTIONS = [

@@ -277,9 +277,10 @@ export function PremierIcon({ size = 14 }) {
   );
 }
 
-export function PremierRatingBadge({ rating }) {
+export function PremierRatingBadge({ rating, height = 22 }) {
   const color = premierTierColor(rating);
   const bg    = premierTierDarkBg(rating);
+  const scale = height / 22;
   const main  = rating >= 1000
     ? `${Math.floor(rating / 1000).toLocaleString()},`
     : String(rating);
@@ -287,7 +288,7 @@ export function PremierRatingBadge({ rating }) {
     ? String(rating % 1000).padStart(3, "0")
     : null;
   return (
-    <div style={{ position: "relative", display: "inline-flex", height: 22, aspectRatio: "110/40", flexShrink: 0 }}>
+    <div style={{ position: "relative", display: "inline-flex", height, aspectRatio: "110/40", flexShrink: 0 }}>
       <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
            viewBox="0 0 125 40" fill="none" preserveAspectRatio="none">
         <path d="M10.5449 1H118.411C121.468 1.0002 123.809 3.71928 123.355 6.74219L119.155 34.7422C118.788 37.1895 116.686 38.9999 114.211 39H6.34473C3.28805 38.9998 0.946954 36.2807 1.40039 33.2578L5.60059 5.25781C5.96793 2.81051 8.07017 1.00006 10.5449 1Z"
@@ -298,8 +299,8 @@ export function PremierRatingBadge({ rating }) {
       </svg>
       <div style={{ position: "relative", display: "flex", flex: 1, alignItems: "center", justifyContent: "center", paddingLeft: "18%" }}>
         <div style={{ display: "flex", alignItems: "baseline", fontStyle: "italic", lineHeight: 1 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color, fontFamily: "var(--mono)" }}>{main}</span>
-          {sub && <span style={{ fontSize: 8, fontWeight: 700, color, fontFamily: "var(--mono)" }}>{sub}</span>}
+          <span style={{ fontSize: Math.round(10 * scale), fontWeight: 700, color, fontFamily: "var(--mono)" }}>{main}</span>
+          {sub && <span style={{ fontSize: Math.round(8 * scale), fontWeight: 700, color, fontFamily: "var(--mono)" }}>{sub}</span>}
         </div>
       </div>
     </div>

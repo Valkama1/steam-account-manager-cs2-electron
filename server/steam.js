@@ -406,7 +406,7 @@ function fetchLeetifyProfile(steamId64) {
                   : (stats.accuracy_head * 100).toFixed(1))
               : null,
             reactionMs:     stats.reaction_time_ms != null ? Math.round(stats.reaction_time_ms) : null,
-            premierRank:    p.ranks?.premier?.rank_value ?? null,
+            premierRank:    p.ranks?.premier ?? null,
             recentMatches:  (p.recent_matches || []).slice(0, 8).map(m => ({
               id:           m.id,
               map:          m.map_name   ?? "Unknown",
