@@ -1,34 +1,58 @@
 # Steam Manager
 
-A desktop app for managing multiple Steam accounts. Track cooldowns, ban status, CS2 playtime, Premier rating, and weekly drop eligibility across all your accounts from a single interface. Switch accounts with one click.
+A desktop app for managing multiple Steam accounts. Track cooldowns, ban status, CS2 playtime, Premier rating, Leetify stats, and weekly drop eligibility across all your accounts from a single interface. Switch accounts with one click.
 
-Built with Electron, React, and Express.
+Built with Electron, React, and Express. Mostly built using [Claude Code](https://claude.ai/code).
 
 ---
 
 ## Features
 
-- **Account cards** — avatar, profile name, login name, Steam ID, CS2 hours, Prime/Premier badges
-- **Status sections** — accounts automatically sorted into Favorites, Available, On Cooldown, and Banned
-- **Cooldown tracking** — set cooldowns with natural input (`20h`, `3d`, `2w`), see time remaining, tooltip shows exact expiry; full cooldown history per account
-- **One-click account switching** — writes directly to Steam's `loginusers.vdf` and relaunches Steam into the target account
-- **Steam data refresh** — fetches live ban status, avatar, and CS2 playtime via the Steam Web API
-- **Auto-refresh** — optionally refresh all accounts in the background every 5, 15, or 30 minutes
-- **Weekly drop tracking** — track which Prime accounts have collected their CS2 care package this week; view full drop history per account
-- **Leetify stats** — view Leetify ratings, skill breakdowns, side stats, and recent matches directly in the app (requires a Leetify API key)
-- **Ban Watcher** — monitor any Steam profile for new VAC/game bans; auto-checks every 4 hours
-- **Notifications** — in-app notification bell alerts you when a watched account gets banned or one of your own accounts receives a ban
-- **Favorites** — star any account to pin it above all other sections
+### Account Management
+- **Account cards** — avatar, profile name, login name, alias, Steam ID, CS2 hours, notes, Prime/Premier badges
+- **One-click account switching** — writes directly to Steam's `loginusers.vdf` and registry, then relaunches Steam into the target account
+- **Status sections** — accounts automatically sorted into Favorites, Available, On Cooldown, and Banned; sections are drag-and-drop reorderable
+- **Favorites** — star any account to pin it to the top
 - **Search** — filter by name, alias, or Steam ID
 - **Filter chips** — filter by Available / Cooldown / Banned / Prime / Premier / Drop eligibility
-- **Sort** — by date added, name, playtime, Premier rating, Steam ID, or a custom drag-and-drop order
-- **Keyboard navigation** — vim-style shortcuts for navigating and switching accounts without touching the mouse
-- **Collapsible sections** — collapse any status section; collapsed state persists across restarts
+- **Sort** — by date added, name, playtime, Premier rating, Steam ID, or a fully custom drag-and-drop order
+
+### Steam Data
+- **Live refresh** — fetches ban status, avatar, profile name, and CS2 playtime via the Steam Web API
+- **Auto-refresh** — optionally refresh all accounts in the background every 5, 15, or 30 minutes
+- **Ban Watcher** — monitor any Steam profile for new VAC/game bans; auto-checks every 4 hours with desktop notifications
+
+### CS2 Specific
+- **Cooldown tracking** — set cooldowns with natural input (`20h`, `3d`, `2w`), see time remaining, full cooldown history with type tagging (abandon, griefing, friendly fire, etc.)
+- **Weekly drop tracking** — track which Prime accounts have collected their CS2 care package this week; view full drop history per account with a countdown to the weekly reset
+- **Premier rating** — set manually or auto-fetched from Leetify; displayed on the card in CS2's tier-colored number plate style
+
+### Leetify Integration
+- **Leetify stats strip** — accounts with a detected Leetify profile show their Premier rank, win rate, and Leetify rating directly on the card, styled in the rank's tier color
+- **Per-account refresh** — right-click any account to force a fresh Leetify lookup
+- **Bulk refresh** — Refresh All includes Leetify for all accounts simultaneously (2 concurrent workers)
+- **Leetify profile link** — click the Leetify icon on any card to open their profile in the browser
+
+### Vault Security
+- **Master password** — protect your stored account passwords with PBKDF2-SHA256 (600k iterations) key derivation and AES-256-GCM encryption
+- **Recovery key** — 32-byte random hex recovery key generated at setup in case you forget your master password
+- **TOTP 2FA** — optionally require a 6-digit authenticator code (Google Authenticator, Authy, etc.) on every vault unlock
+- **Secure export / import** — export your full account list including encrypted passwords, wrapped under an export passphrase; import re-encrypts passwords under the target machine's vault key
+- **Legacy mode** — existing installs without a master password continue to work transparently
+
+### Notifications
+- **In-app notification bell** — alerts when a watched account is banned or one of your own accounts receives a VAC/game ban
+- **Desktop notifications** — native OS notifications for ban events (when permission granted)
+
+### UI & Customisation
+- **Themes** — 11 built-in themes: Catppuccin Mocha, Catppuccin Latte, OLED Dark, Material Dark, Material Light, Dracula, Nord, Tokyo Night, Gruvbox Dark, Rosé Pine, One Dark Pro, plus System Auto
+- **Full color editor** — every color variable is editable per theme in Settings
+- **Custom themes** — add a new theme by dropping a single JS file into `client/src/themes/`
 - **Collapsible sidebar** — shrinks to icon-only mode for more card space
-- **Themes** — Catppuccin Mocha, Catppuccin Latte, OLED Dark, Material Dark, Material Light, or System Auto; fully customisable per-color
-- **Custom themes** — add a new theme by dropping a single file into `client/src/themes/`
-- **Export / Import** — back up and restore your account list as JSON
-- **Automation API** — external programs can mark drops, query drop eligibility, and trigger account switches over a local HTTP API
+- **Grid / list layout** — switch between card grid and compact single-column list
+- **Keyboard navigation** — vim-style (`hjkl`) and arrow-key navigation, spatial-aware across grid rows
+- **Drag-and-drop** — reorder both individual cards and entire sections by dragging
+- **Automation API** — external programs can query accounts, mark drops, and trigger account switches over a local HTTP API
 
 ---
 
@@ -75,7 +99,7 @@ npm run electron:build
 # AppImage (portable) and .deb (Debian/Ubuntu)
 ```
 
-Output goes to `dist-electron/`.
+Output goes to `dist-electron/`. Target machines do not need Node.js installed.
 
 ---
 
@@ -97,10 +121,10 @@ On Linux, Steam is located by checking `~/.local/share/Steam`, `~/.steam/steam`,
 Open **Settings** (gear icon in the sidebar) to configure:
 
 - **Steam API key** — required for ban status, playtime, and avatar fetching. Get one free at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey).
-- **Leetify API key** — optional. Enables Leetify stats on account cards. Get yours from your Leetify account settings.
+- **Leetify API key** — optional. Enables Leetify stats (Premier rank, win rate, rating) on account cards. Get yours from your Leetify account settings.
 - **Auto-refresh interval** — automatically refresh all Steam data in the background.
 - **Card layout** — grid or list.
-- **Colors** — customise every color per theme.
+- **Colors** — customise every color variable per theme.
 
 ---
 
@@ -125,14 +149,12 @@ Navigation is spatially aware — in grid layout, keys move to the nearest card 
 Right-clicking any card opens a context menu with:
 
 - Refresh Steam data
+- Refresh Leetify data
 - Set / clear cooldown
-- Switch to account
 - View cooldown history
-- Toggle weekly drop collected
 - View drop history
-- View Leetify stats
 - Edit account
-- Add to / remove from favorites
+- Switch to account
 
 ---
 
@@ -144,6 +166,23 @@ Right-clicking any card opens a context menu with:
 | `6h` | 6 hours |
 | `10d` | 10 days |
 | `2w` | 2 weeks |
+
+Cooldowns can optionally be tagged with a type (abandon, griefing, friendly fire, suspicious, other) for your records.
+
+---
+
+## Vault Security
+
+Steam Manager optionally encrypts stored passwords with a master password:
+
+1. First launch: choose a master password — a recovery key is shown once, save it somewhere safe
+2. The vault key is derived via PBKDF2-SHA256 (600k iterations) and wrapped with AES-256-GCM
+3. Optionally enable TOTP 2FA for an additional unlock factor
+4. Lock the vault from Settings → Security at any time
+
+**Secure export** wraps the vault key under an export passphrase so passwords stay encrypted in transit. Importing on another machine re-encrypts everything under that machine's vault key.
+
+Existing installs without a master password continue to work in **legacy mode** — no migration required.
 
 ---
 
@@ -161,15 +200,18 @@ Each theme is a single file in `client/src/themes/`. To add your own:
 export default {
   id: "my-theme",
   label: "My Theme",
-  order: 10,
+  order: 12,
   colors: {
     "bg": "#0d1117", "surface": "#161b22", "card": "#21262d", "card-h": "#30363d",
     "border": "#30363d", "accent": "#58a6ff", "accent-d": "#79c0ff",
-    "green": "#56d364",  "yellow": "#e3b341", "red": "#f85149",
-    "text": "#c9d1d9",   "dim": "#8b949e",    "muted": "#484f58",
+    "green": "#56d364", "yellow": "#e3b341", "red": "#f85149",
+    "orange": "#f0883e", "cyan": "#39c5cf", "pink": "#f778ba",
+    "text": "#c9d1d9", "dim": "#8b949e", "muted": "#484f58",
   },
 };
 ```
+
+The `orange`, `cyan`, and `pink` slots are used for cooldown indicators, playtime badges, and the favorite star respectively.
 
 ---
 
@@ -197,8 +239,6 @@ GET http://localhost:3001/api/automation
 
 ### Example: automated drop rotation
 
-An external drop-detection tool can call these endpoints to advance through accounts automatically:
-
 ```bash
 # 1. Drop detected on current account — mark it done
 curl -X POST http://localhost:3001/api/accounts/<id>/drop
@@ -209,8 +249,6 @@ curl -X POST http://localhost:3001/api/automation/next-drop/switch
 
 # When remaining hits 0, all accounts are done for the week
 ```
-
-The `remaining` field in the response tells you how many eligible accounts are left after the switch.
 
 ---
 
@@ -225,9 +263,12 @@ All data is stored locally. Nothing is sent anywhere except the Steam Web API an
 
 | File | Contents |
 |------|----------|
-| `accounts.json` | Account list |
-| `config.json` | API keys |
-| `.key` | Encryption key for stored passwords |
+| `accounts.json` | Account list with all stored data |
+| `config.json` | API keys and app config |
+| `auth.json` | Vault auth config (master password hash, TOTP secret) |
+| `.key` | Legacy encryption key (pre-vault installs) |
+| `watchlist.json` | Ban watcher entries |
+| `notifications.json` | Notification history |
 
 ---
 
@@ -235,22 +276,26 @@ All data is stored locally. Nothing is sent anywhere except the Steam Web API an
 
 ```
 steam-manager/
-├── electron/           # Electron main process
+├── electron/               # Electron main process
 │   ├── main.js
 │   └── preload.js
-├── server/             # Express REST API + Steam integration
-│   ├── index.js        # Routes and automation API
-│   ├── steam.js        # Steam path detection, kill, VDF parsing
-│   ├── crypto.js       # Password encryption
-│   ├── db.js           # Account persistence
-│   ├── watchlist.js    # Ban watcher
-│   └── notifications.js
-├── client/             # React + Vite frontend
+├── server/                 # Express REST API
+│   ├── index.js            # All routes
+│   ├── auth.js             # Vault security (PBKDF2, AES-GCM, TOTP)
+│   ├── crypto.js           # Password encryption / decryption
+│   ├── steam.js            # Steam path detection, VDF parsing, API calls
+│   ├── db.js               # Account persistence
+│   ├── config.js           # Config persistence
+│   ├── watchlist.js        # Ban watcher
+│   ├── notifications.js    # Notification store
+│   └── tests/
+├── client/                 # React + Vite frontend
 │   └── src/
-│       ├── App.jsx
-│       ├── App.module.css
-│       ├── themes/     # One file per theme — add new themes here
-│       └── components/
+│       ├── App.jsx          # Main app shell
+│       ├── App.module.css   # All styles
+│       ├── themes/          # One JS file per theme
+│       ├── components/      # All UI components
+│       └── constants.js
 └── package.json
 ```
 
@@ -266,3 +311,13 @@ steam-manager/
 | `npm run electron:build` | Build platform installer |
 | `npm test` | Run server tests |
 | `npm run test:watch` | Run server tests in watch mode |
+
+---
+
+## Built With
+
+- [Electron](https://www.electronjs.org/) — desktop shell
+- [React](https://react.dev/) + [Vite](https://vitejs.dev/) — frontend
+- [Express](https://expressjs.com/) — local REST API
+- [@dnd-kit](https://dndkit.com/) — drag and drop
+- [Claude Code](https://claude.ai/code) — the majority of this app was designed and built through an iterative conversation with Claude Code (Anthropic's AI coding tool), from the initial architecture through to features, styling, and security design
