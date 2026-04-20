@@ -42,7 +42,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: steam-manager-${{ matrix.name }}
-          path: dist-electron/
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.AppImage
+            dist-electron/*.deb
           if-no-files-found: error
 
   release:
@@ -68,7 +71,10 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/**
+          files: |
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
