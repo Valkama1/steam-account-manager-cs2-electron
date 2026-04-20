@@ -36,7 +36,7 @@ jobs:
         working-directory: client
 
       - name: Build
-        run: npm run electron:build
+        run: npm run electron:build -- --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -70,3 +70,5 @@ jobs:
         with:
           files: release/**
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
