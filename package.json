@@ -2,7 +2,10 @@
   "name": "steam-manager",
   "version": "1.0.0",
   "description": "Manage multiple Steam accounts from a single interface",
-  "author": "Valkama1",
+  "author": {
+    "name": "Valkama1",
+    "email": "valkamafelix@proton.me"
+  },
   "private": true,
   "main": "electron/main.js",
   "scripts": {
