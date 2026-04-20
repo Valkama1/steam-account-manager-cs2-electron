@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-latest
+          - os: self-hosted
             artifact: dist-electron/*.exe
             name: windows
           - os: ubuntu-latest
