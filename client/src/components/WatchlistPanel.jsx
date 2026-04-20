@@ -99,14 +99,28 @@ export default function WatchlistPanel({ watchlist, onClose, onAdd, onRemove, on
             const banned = entry.vacBanned || entry.gameBans > 0;
             return (
               <div key={entry.id} className={`${styles.watchlistEntry} ${banned ? styles.watchlistEntryBanned : ""}`}>
-                {entry.avatar
-                  ? <img src={entry.avatar} alt="" className={styles.watchlistAvatar} />
-                  : <div className={styles.watchlistAvatarPlaceholder} />
-                }
+                {entry.steamId64 ? (
+                  <a href={`https://steamcommunity.com/profiles/${entry.steamId64}`} target="_blank" rel="noreferrer">
+                    {entry.avatar
+                      ? <img src={entry.avatar} alt="" className={styles.watchlistAvatar} />
+                      : <div className={styles.watchlistAvatarPlaceholder} />
+                    }
+                  </a>
+                ) : entry.avatar ? (
+                  <img src={entry.avatar} alt="" className={styles.watchlistAvatar} />
+                ) : (
+                  <div className={styles.watchlistAvatarPlaceholder} />
+                )}
                 <div className={styles.watchlistInfo}>
-                  <span className={styles.watchlistName}>
-                    {entry.profileName || entry.steamId64 || "Unknown"}
-                  </span>
+                  {entry.steamId64 ? (
+                    <a href={`https://steamcommunity.com/profiles/${entry.steamId64}`} target="_blank" rel="noreferrer" className={styles.watchlistName}>
+                      {entry.profileName || entry.steamId64 || "Unknown"}
+                    </a>
+                  ) : (
+                    <span className={styles.watchlistName}>
+                      {entry.profileName || entry.steamId64 || "Unknown"}
+                    </span>
+                  )}
                   <div className={styles.watchlistBadges}>
                     {entry.vacBanned && <span className={styles.watchlistBadgeVac}>VAC Ban</span>}
                     {entry.gameBans > 0 && (

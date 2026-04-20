@@ -2,6 +2,7 @@ const express         = require("express");
 const cors            = require("cors");
 const fs              = require("fs");
 const path            = require("path");
+const https           = require("https");
 const { exec, execFile, spawn } = require("child_process");
 const { v4: uuidv4 }  = require("uuid");
 
@@ -632,6 +633,66 @@ app.post("/api/automation/next-drop/switch", (_req, res) => {
     };
     await doSwitch(next.id, res);
   });
+});
+
+// ── Patch Notes ───────────────────────────────────────────────────────────────
+
+function httpsGetJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let data = "";
+      res.on("data", chunk => data += chunk);
+      res.on("end", () => { try { resolve(JSON.parse(data)); } catch { reject(new Error("Invalid JSON")); } });
+    }).on("error", reject);
+  });
+}
+
+app.get("/api/patch-notes/tracked", (_req, res) => {
+  const config = readConfig();
+  res.json(config.trackedGames || []);
+});
+
+app.post("/api/patch-notes/tracked", (req, res) => {
+  const { appid, name, icon } = req.body;
+  if (!appid || !name) return res.status(400).json({ error: "appid and name required" });
+  const config = readConfig();
+  const games  = config.trackedGames || [];
+  if (!games.find(g => g.appid === appid)) {
+    games.push({ appid, name, icon: icon || null });
+    writeConfig({ ...config, trackedGames: games });
+  }
+  res.json(games);
+});
+
+app.delete("/api/patch-notes/tracked/:appid", (req, res) => {
+  const appid  = parseInt(req.params.appid, 10);
+  const config = readConfig();
+  const games  = (config.trackedGames || []).filter(g => g.appid !== appid);
+  writeConfig({ ...config, trackedGames: games });
+  res.json(games);
+});
+
+app.get("/api/patch-notes/search", async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.json({ items: [] });
+  try {
+    const data = await httpsGetJson(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`);
+    res.json({ items: (data.items || []).map(i => ({ id: i.id, name: i.name, tiny_image: i.tiny_image })) });
+  } catch { res.json({ items: [] }); }
+});
+
+app.get("/api/patch-notes/news/:appid", async (req, res) => {
+  const appid = parseInt(req.params.appid, 10);
+  if (!appid) return res.status(400).json({ items: [] });
+  try {
+    const data  = await httpsGetJson(`https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appid}&count=15&maxlength=1200&format=json`);
+    const items = (data.appnews?.newsitems || []).map(n => ({
+      gid: n.gid, title: n.title, url: n.url,
+      contents: n.contents, feedlabel: n.feedlabel,
+      date: n.date, author: n.author,
+    }));
+    res.json({ items });
+  } catch { res.json({ items: [] }); }
 });
 
 // ── Static (production / Electron) ───────────────────────────────────────────

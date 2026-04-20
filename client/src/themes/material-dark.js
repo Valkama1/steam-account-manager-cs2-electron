@@ -3,10 +3,10 @@ export default {
   label: "Material Dark",
   order: 4,
   colors: {
-    "bg": "#141218", "surface": "#1c1b1f", "card": "#211f26", "card-h": "#2b2930",
-    "border": "#49454f", "accent": "#d0bcff", "accent-d": "#ccc2dc",
-    "green": "#6dd58c", "yellow": "#e6c353", "red": "#f2b8b5",
-    "orange": "#ffb77c", "cyan": "#4fd8eb", "pink": "#ffb3c1",
-    "text": "#e6e0e9", "dim": "#cac4d0", "muted": "#938f99",
+    "bg": "#121212", "surface": "#1e1e1e", "card": "#242424", "card-h": "#2e2e2e",
+    "border": "#383838", "accent": "#90caf9", "accent-d": "#64b5f6",
+    "green": "#a5d6a7", "yellow": "#ffe082", "red": "#e57373",
+    "orange": "#ffcc80", "cyan": "#80deea", "pink": "#f06292",
+    "text": "#e0e0e0", "dim": "#9e9e9e", "muted": "#616161",
   },
 };

@@ -141,13 +141,13 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const winRateNum  = acc.leetifyWinRate != null ? parseFloat(acc.leetifyWinRate) : null;
   const ratingNum   = acc.leetifyRating  != null ? acc.leetifyRating              : null;
   const tierColor   = displayRating == null ? "var(--dim)"
-    : displayRating >= 30000 ? "#f0c030"
-    : displayRating >= 25000 ? "#eb4b4b"
-    : displayRating >= 20000 ? "#d32ce6"
-    : displayRating >= 15000 ? "#8847ff"
-    : displayRating >= 10000 ? "#4b69ff"
-    : displayRating >= 5000  ? "#5e98d9"
-    : "#b0c3d9";
+    : displayRating >= 30000 ? "var(--yellow)"
+    : displayRating >= 25000 ? "var(--red)"
+    : displayRating >= 20000 ? "var(--pink)"
+    : displayRating >= 15000 ? "var(--accent-d)"
+    : displayRating >= 10000 ? "var(--accent)"
+    : displayRating >= 5000  ? "var(--cyan)"
+    : "var(--dim)";
   const winRateColor = winRateNum == null ? "var(--text)"
     : winRateNum >= 60 ? "var(--green)"
     : winRateNum >= 50 ? "color-mix(in srgb, var(--green) 50%, var(--yellow))"
@@ -281,8 +281,12 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
           )}
           {acc.notes && <NotesChip note={acc.notes} />}
           {badgesEl}
-          {premierRankEl}
         </div>
+        {showPremierBadge && displayRating != null && (
+          <div className={styles.cardListRankCol}>
+            {premierRankEl}
+          </div>
+        )}
         {statusEl}
         <div className={styles.cardListActions}>
           {cdOpen ? (

@@ -686,7 +686,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 16px 10px;
+  margin: 0 16px 6px;
   padding: 6px 10px;
   border-radius: 8px;
   border-left: 3px solid;
@@ -1195,8 +1195,24 @@
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
-.cardList .premierRankRow {
-  margin: 4px 0 0;
+.cardList .cardInfo {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.cardListRankCol {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.cardListRankCol .premierRankRow {
+  margin: 0;
+  width: 160px;
+  flex-shrink: 0;
+}
+@media (max-width: 680px) {
+  .cardListRankCol { display: none; }
 }
 .cardList .cardStatus {
   padding: 0;
@@ -2512,13 +2528,13 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
   height: 32px;
   border-radius: 8px;
   background: var(--card);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2020/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M7 9.5L12 14.5L17 9.5' stroke='%23888' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M7 9.5L12 14.5L17 9.5' stroke='%23888' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   border: 1px solid var(--border);
   color: var(--dim);
   cursor: pointer;
-  width: auto;
+  width: 110px;
   appearance: none;
   flex-shrink: 0;
   transition:
@@ -2592,6 +2608,7 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
+  text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2684,3 +2701,252 @@ a.cardName:hover { color: var(--accent); text-decoration: underline; }
   color: var(--muted);
   letter-spacing: 0.01em;
 }
+
+/* ── patch notes modal ── */
+.patchNotesModal {
+  width: 780px;
+  max-width: 95vw;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.patchNotesBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+.patchNotesSidebar {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  overflow-y: auto;
+  gap: 2px;
+}
+.patchNotesGame {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 0 6px;
+  transition: background var(--dur-short) var(--motion-standard);
+}
+.patchNotesGame:hover { background: var(--card-h); }
+.patchNotesGameSelected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.patchNotesGameSelected .patchNotesGameName { color: var(--accent); }
+.patchNotesGameIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.patchNotesGameIconPlaceholder {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.patchNotesGameName {
+  flex: 1;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.patchNotesGameRemove {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: opacity var(--dur-short) var(--motion-standard), color var(--dur-short) var(--motion-standard);
+}
+.patchNotesGame:hover .patchNotesGameRemove { opacity: 1; }
+.patchNotesGameRemove:hover { color: var(--red); }
+.patchNotesAddBox {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.patchNotesSearchInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+}
+.patchNotesSearchInput:focus { border-color: var(--accent); }
+.patchNotesSearchHint {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--dim);
+  padding: 0 2px;
+}
+.patchNotesSearchResults {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.patchNotesSearchResult {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background var(--dur-short) var(--motion-standard);
+}
+.patchNotesSearchResult:hover { background: var(--card-h); }
+.patchNotesResultIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.patchNotesResultName {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.patchNotesAddBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 6px 0;
+  padding: 6px 10px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--motion-standard), border-color var(--dur-short) var(--motion-standard);
+}
+.patchNotesAddBtn:hover { color: var(--text); border-color: var(--dim); }
+.patchNotesFeed {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.patchNotesFeedHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.patchNotesFeedIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.patchNotesFeedTitle {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.patchNotesEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--dim);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.patchNotesItem {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.patchNotesItem:last-child { border-bottom: none; }
+.patchNotesItemHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.patchNotesItemTitle {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+.patchNotesItemMeta {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.patchNotesItemTag {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 2px 7px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.patchNotesItemBody {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.patchNotesItemLink {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+  align-self: flex-start;
+  transition: color var(--dur-short) var(--motion-standard);
+}
+.patchNotesItemLink:hover { color: var(--accent-d); }

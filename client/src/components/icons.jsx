@@ -229,6 +229,14 @@ export function NoteIcon({ size = 16 }) {
   );
 }
 
+export function NewspaperIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z" />
+    </Icon>
+  );
+}
+
 export function InfoIcon({ size = 14 }) {
   return (
     <Icon size={size}>

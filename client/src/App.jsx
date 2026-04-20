@@ -16,7 +16,8 @@ import Section from "./components/Section.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 import WatchlistPanel from "./components/WatchlistPanel.jsx";
 import NotificationsPanel from "./components/NotificationsPanel.jsx";
-import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon } from "./components/icons.jsx";
+import PatchNotesModal from "./components/PatchNotesModal.jsx";
+import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon, NewspaperIcon } from "./components/icons.jsx";
 
 export default function App() {
   // Auth state: null = loading, then { hasAuth, legacyMode, locked, totpEnabled }
@@ -54,7 +55,8 @@ export default function App() {
   const [activeFilters, setActiveFilters] = useState(() => readFilterCookie());
   const [settings, setSettings]           = useState(() => readSettings());
   const [settingsOpen, setSettingsOpen]   = useState(false);
-  const [watchlistOpen, setWatchlistOpen] = useState(false);
+  const [watchlistOpen, setWatchlistOpen]     = useState(false);
+  const [patchNotesOpen, setPatchNotesOpen]   = useState(false);
   const [watchlist, setWatchlist]         = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen]         = useState(false);
@@ -556,7 +558,9 @@ export default function App() {
         : settings.colors[settings.themeMode];
       if (!colors) return;
       const root = document.documentElement;
+      root.classList.add("theme-transitioning");
       Object.entries(colors).forEach(([k, v]) => root.style.setProperty(`--${k}`, v));
+      setTimeout(() => root.classList.remove("theme-transitioning"), 350);
     }
     applyColors();
     if (settings.themeMode === "auto") {
@@ -770,6 +774,7 @@ export default function App() {
         {settings.sidebarCollapsed ? (
           <>
             <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={18} /></button>
+            <button className={styles.gearBtn} onClick={() => setPatchNotesOpen(true)} title="Patch Notes"><NewspaperIcon size={18} /></button>
             <button data-notif-trigger className={`${styles.gearBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
               <BellIcon size={18} />
               {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
@@ -779,6 +784,7 @@ export default function App() {
         ) : (
           <div className={styles.sidebarIconRow}>
             <button className={styles.sidebarIconBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={14} /> Ban Watcher</button>
+            <button className={styles.sidebarIconBtn} onClick={() => setPatchNotesOpen(true)} title="Patch Notes"><NewspaperIcon size={14} /> Patch Notes</button>
             <button data-notif-trigger className={`${styles.sidebarIconBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
               <BellIcon size={14} />
               {notifications.length > 0 && <span className={styles.notifBadge}>{notifications.length > 99 ? "99+" : notifications.length}</span>}
@@ -1000,6 +1006,7 @@ export default function App() {
           checking={watchChecking}
         />
       )}
+      {patchNotesOpen && <PatchNotesModal onClose={() => setPatchNotesOpen(false)} />}
       {settingsOpen && (
         <SettingsModal settings={settings} onChange={updateSetting} onClose={() => setSettingsOpen(false)}
           keyDraft={keyDraft} onKeyDraftChange={setKeyDraft} onSaveKey={handleSaveKey} apiKey={apiKey}
