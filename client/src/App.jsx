@@ -5,6 +5,7 @@ import { isExpired, getCurrentWeekStart } from "./cooldown.js";
 import styles from "./App.module.css";
 import { API, THEME_PRESETS, SETTINGS_KEY, SORT_OPTIONS } from "./constants.js";
 import { readSettings, readFilterCookie, writeFilterCookie, sortAccounts } from "./utils.js";
+import { useFlipCards } from "./hooks/useFlipCards.js";
 import SetupScreen from "./components/SetupScreen.jsx";
 import UnlockScreen from "./components/UnlockScreen.jsx";
 import AccountCard from "./components/AccountCard.jsx";
@@ -571,9 +572,13 @@ export default function App() {
   }, [settings.themeMode, settings.colors]);
   function updateSetting(key, value) { setSettings(prev => ({ ...prev, [key]: value })); }
 
+  // ── card FLIP animation ───────────────────────────────────────────────────────
+  const snapshotCards = useFlipCards([activeFilters, search, settings.sortField, settings.sortDir, settings.customOrder]);
+
   // ── tri-state filters ────────────────────────────────────────────────────────
   useEffect(() => { writeFilterCookie(activeFilters); }, [activeFilters]);
   function cycleFilter(f) {
+    snapshotCards();
     setActiveFilters(prev => {
       const next = { ...prev };
       if (!next[f])                   next[f] = "include";
@@ -819,22 +824,22 @@ export default function App() {
                 ref={searchRef}
                 className={styles.searchInput}
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { snapshotCards(); setSearch(e.target.value); }}
                 placeholder="Search by name, alias, or Steam ID…  ( / )"
-                onKeyDown={e => e.key === "Escape" && (e.target.blur(), setSearch(""))}
+                onKeyDown={e => e.key === "Escape" && (e.target.blur(), snapshotCards(), setSearch(""))}
               />
               <div className={styles.sortControls}>
                 <select
                   className={styles.sortSelect}
                   value={settings.sortField}
-                  onChange={e => updateSetting("sortField", e.target.value)}
+                  onChange={e => { snapshotCards(); updateSetting("sortField", e.target.value); }}
                 >
                   {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {settings.sortField !== "custom" && (
                   <button
                     className={styles.sortDirBtn}
-                    onClick={() => updateSetting("sortDir", settings.sortDir === "asc" ? "desc" : "asc")}
+                    onClick={() => { snapshotCards(); updateSetting("sortDir", settings.sortDir === "asc" ? "desc" : "asc"); }}
                     title={settings.sortDir === "asc" ? "Ascending" : "Descending"}
                   >{settings.sortDir === "asc" ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}</button>
                 )}
