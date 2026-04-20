@@ -3,8 +3,9 @@ import styles from "../App.module.css";
 import { CloseIcon, BellIcon } from "./icons.jsx";
 
 const TYPE_META = {
-  vac_ban:  { label: "VAC Ban",       color: "var(--red)" },
-  game_ban: { label: "Game Ban",      color: "var(--red)" },
+  vac_ban:    { label: "VAC Ban",    color: "var(--red)"    },
+  game_ban:   { label: "Game Ban",   color: "var(--red)"    },
+  patch_note: { label: "Update",     color: "var(--accent)" },
 };
 
 const SOURCE_META = {
@@ -61,18 +62,28 @@ export default function NotificationsPanel({ notifications, onClose, onClearAll,
         ) : (
           notifications.map(n => {
             const meta = TYPE_META[n.type] || { label: n.type, color: "var(--dim)" };
+            const isPatchNote = n.type === "patch_note";
             return (
               <div key={n.id} className={styles.notifItem}>
                 <div className={styles.notifDot} style={{ background: meta.color }} />
                 <div className={styles.notifBody}>
                   <div className={styles.notifItemTitle}>
-                    <span className={styles.notifName}>{n.accountName}</span>
+                    <span className={styles.notifName}>
+                      {isPatchNote ? n.gameName : n.accountName}
+                    </span>
                     <span className={styles.notifBadge} style={{ color: meta.color, borderColor: `color-mix(in srgb, ${meta.color} 30%, transparent)` }}>
                       {meta.label}
                     </span>
                   </div>
+                  {isPatchNote && n.title && (
+                    <div className={styles.notifPatchTitle}>
+                      <a href={n.url} target="_blank" rel="noreferrer" className={styles.notifPatchLink}>
+                        {n.title}
+                      </a>
+                    </div>
+                  )}
                   <div className={styles.notifMeta}>
-                    {SOURCE_META[n.source] ?? n.source} · {timeAgo(n.createdAt)}
+                    {isPatchNote ? "Patch Notes" : (SOURCE_META[n.source] ?? n.source)} · {timeAgo(n.createdAt)}
                   </div>
                 </div>
                 <button className={styles.notifDismiss} onClick={() => onDismiss(n.id)} title="Dismiss">

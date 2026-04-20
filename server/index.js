@@ -11,7 +11,7 @@ const { readConfig, writeConfig }                                   = require(".
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
 const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin, setAutoLoginRegistry } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
-const { readNotifications, addNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
+const { readNotifications, addNotification, addPatchNoteNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
 const auth = require("./auth.js");
 
 const DEBUG = process.env.DEBUG === "1";
@@ -695,6 +695,49 @@ app.get("/api/patch-notes/news/:appid", async (req, res) => {
   } catch { res.json({ items: [] }); }
 });
 
+const PATCH_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+async function checkPatchNotes() {
+  const config = readConfig();
+  const games  = config.trackedGames || [];
+  if (!games.length) return;
+
+  const lastSeen = { ...(config.patchNotesLastSeen || {}) };
+  let changed = false;
+
+  for (const game of games) {
+    try {
+      const data   = await httpsGetJson(`https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${game.appid}&count=1&maxlength=300&format=json`);
+      const latest = data.appnews?.newsitems?.[0];
+      if (!latest) continue;
+
+      const prev = lastSeen[game.appid];
+      if (!prev) {
+        // First time seeing this game — record baseline, don't notify
+        lastSeen[game.appid] = latest.gid;
+        changed = true;
+        continue;
+      }
+      if (latest.gid !== prev) {
+        addPatchNoteNotification({ gameName: game.name, appid: game.appid, title: latest.title, url: latest.url, gid: latest.gid });
+        lastSeen[game.appid] = latest.gid;
+        changed = true;
+        console.log(`[patch-notes] new update for ${game.name}: ${latest.title}`);
+      }
+    } catch (e) {
+      console.error(`[patch-notes] check failed for ${game.name}:`, e.message);
+    }
+  }
+
+  if (changed) writeConfig({ ...readConfig(), patchNotesLastSeen: lastSeen });
+}
+
+function startPatchNotesInterval() {
+  setTimeout(checkPatchNotes, 2 * 60 * 1000);
+  setInterval(checkPatchNotes, PATCH_CHECK_INTERVAL_MS);
+  console.log("[patch-notes] auto-check every 30min");
+}
+
 // ── Static (production / Electron) ───────────────────────────────────────────
 
 const clientDist = path.join(__dirname, "..", "client", "dist");
@@ -708,6 +751,7 @@ if (fs.existsSync(clientDist)) {
 function startServer(port) {
   return new Promise(resolve => app.listen(port || PORT, () => {
     startWatchInterval();
+    startPatchNotesInterval();
     resolve();
   }));
 }

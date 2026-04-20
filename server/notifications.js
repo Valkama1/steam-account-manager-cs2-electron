@@ -31,6 +31,22 @@ function addNotification({ type, source, accountName, steamId64 }) {
   writeNotifications(notifications);
 }
 
+function addPatchNoteNotification({ gameName, appid, title, url, gid }) {
+  const notifications = readNotifications();
+  if (notifications.find(n => n.gid === gid)) return;
+  notifications.unshift({
+    id:       uuidv4(),
+    type:     "patch_note",
+    gameName,
+    appid,
+    title,
+    url,
+    gid,
+    createdAt: new Date().toISOString(),
+  });
+  writeNotifications(notifications);
+}
+
 function clearAll() {
   writeNotifications([]);
 }
@@ -40,4 +56,4 @@ function clearOne(id) {
   writeNotifications(notifications);
 }
 
-module.exports = { readNotifications, addNotification, clearAll, clearOne };
+module.exports = { readNotifications, addNotification, addPatchNoteNotification, clearAll, clearOne };

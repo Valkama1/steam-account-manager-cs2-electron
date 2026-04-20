@@ -377,6 +377,18 @@
   color: var(--dim);
   margin-top: 2px;
 }
+.notifPatchTitle {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notifPatchLink {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.notifPatchLink:hover { text-decoration: underline; }
 .notifDismiss {
   display: flex;
   align-items: center;
