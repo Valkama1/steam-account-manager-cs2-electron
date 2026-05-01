@@ -1,0 +1,10 @@
+start
+app start
+settings
+start
+app start
+settings
+check anticheat
+patchguard check
+update check
+finish

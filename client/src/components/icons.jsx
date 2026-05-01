@@ -237,6 +237,38 @@ export function NewspaperIcon({ size = 16 }) {
   );
 }
 
+export function FolderIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+    </Icon>
+  );
+}
+
+export function PowerIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z" />
+    </Icon>
+  );
+}
+
+export function AppsIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z" />
+    </Icon>
+  );
+}
+
+export function LaunchIcon({ size = 16 }) {
+  return (
+    <Icon size={size}>
+      <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
+    </Icon>
+  );
+}
+
 export function InfoIcon({ size = 14 }) {
   return (
     <Icon size={size}>

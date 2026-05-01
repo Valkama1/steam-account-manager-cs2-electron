@@ -18,7 +18,8 @@ import SettingsModal from "./components/SettingsModal.jsx";
 import WatchlistPanel from "./components/WatchlistPanel.jsx";
 import NotificationsPanel from "./components/NotificationsPanel.jsx";
 import PatchNotesModal from "./components/PatchNotesModal.jsx";
-import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon, NewspaperIcon } from "./components/icons.jsx";
+import ShortcutsPanel from "./components/ShortcutsPanel.jsx";
+import { FlagIcon, SettingsIcon, RefreshIcon, PlusIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon, ChevronDownIcon, BellIcon, NewspaperIcon, PowerIcon, AppsIcon, DownloadIcon } from "./components/icons.jsx";
 
 export default function App() {
   // Auth state: null = loading, then { hasAuth, legacyMode, locked, totpEnabled }
@@ -58,6 +59,11 @@ export default function App() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [watchlistOpen, setWatchlistOpen]     = useState(false);
   const [patchNotesOpen, setPatchNotesOpen]   = useState(false);
+  const [shortcutsOpen, setShortcutsOpen]     = useState(false);
+  const [shortcuts, setShortcuts]             = useState([]);
+  const [shuttingDown, setShuttingDown]       = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateReady, setUpdateReady]         = useState(false);
   const [watchlist, setWatchlist]         = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen]         = useState(false);
@@ -447,6 +453,72 @@ export default function App() {
     await fetchAccounts();
   }
 
+  // ── shutdown steam ──
+  async function handleShutdownSteam() {
+    setShuttingDown(true);
+    try {
+      const r = await fetch("/api/steam/shutdown", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) { addToast(`Shutdown failed: ${data.error}`); return; }
+      addToast(data.wasRunning ? "Steam shut down" : "Steam was not running", "success");
+    } catch {
+      addToast("Shutdown failed: server unreachable");
+    } finally {
+      setShuttingDown(false);
+    }
+  }
+
+  // ── shortcuts ──
+  async function fetchShortcuts() {
+    try {
+      const r = await fetch("/api/shortcuts");
+      if (r.ok) setShortcuts(await r.json());
+    } catch {}
+  }
+
+  useEffect(() => { fetchShortcuts(); }, []);
+
+  useEffect(() => {
+    window.electronAPI?.onUpdateAvailable(() => setUpdateAvailable(true));
+    window.electronAPI?.onUpdateDownloaded(() => { setUpdateAvailable(false); setUpdateReady(true); });
+  }, []);
+
+  async function handleAddShortcut(data) {
+    const r = await fetch("/api/shortcuts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || "Failed to add shortcut");
+    setShortcuts(prev => [...prev, body]);
+  }
+
+  async function handleEditShortcut(id, data) {
+    const r = await fetch(`/api/shortcuts/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || "Failed to update shortcut");
+    setShortcuts(prev => prev.map(s => s.id === id ? body : s));
+  }
+
+  async function handleDeleteShortcut(id) {
+    const r = await fetch(`/api/shortcuts/${id}`, { method: "DELETE" });
+    if (r.ok) setShortcuts(prev => prev.filter(s => s.id !== id));
+  }
+
+  async function handleReorderShortcuts(reordered) {
+    setShortcuts(reordered);
+    fetch("/api/shortcuts/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered.map(s => s.id) }),
+    }).catch(() => {});
+  }
+
+  async function handleLaunchShortcut(id) {
+    const shortcut = shortcuts.find(s => s.id === id);
+    const r = await fetch(`/api/shortcuts/${id}/launch`, { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) { addToast(`Launch failed: ${data.error}`); return; }
+    addToast(`Launched ${shortcut?.name || "shortcut"}`, "success");
+  }
+
   // ── switch account ──
   async function handleSwitch(id) {
     const acc = accounts.find(a => a.id === id);
@@ -776,8 +848,20 @@ export default function App() {
           </div>
         )}
 
+        <button
+          className={styles.shutdownBtn}
+          onClick={handleShutdownSteam}
+          disabled={shuttingDown}
+          title="Shut down Steam"
+        >
+          {settings.sidebarCollapsed
+            ? <PowerIcon size={18} />
+            : <><PowerIcon size={13} />{shuttingDown ? "Shutting down…" : "Shut Down Steam"}</>}
+        </button>
+
         {settings.sidebarCollapsed ? (
           <>
+            <button className={styles.gearBtn} onClick={() => setShortcutsOpen(true)} title="Shortcuts"><AppsIcon size={18} /></button>
             <button className={styles.gearBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={18} /></button>
             <button className={styles.gearBtn} onClick={() => setPatchNotesOpen(true)} title="Patch Notes"><NewspaperIcon size={18} /></button>
             <button data-notif-trigger className={`${styles.gearBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
@@ -788,6 +872,7 @@ export default function App() {
           </>
         ) : (
           <div className={styles.sidebarIconRow}>
+            <button className={styles.sidebarIconBtn} onClick={() => setShortcutsOpen(true)} title="Shortcuts"><AppsIcon size={14} /> Shortcuts</button>
             <button className={styles.sidebarIconBtn} onClick={() => setWatchlistOpen(true)} title="Ban Watcher"><FlagIcon size={14} /> Ban Watcher</button>
             <button className={styles.sidebarIconBtn} onClick={() => setPatchNotesOpen(true)} title="Patch Notes"><NewspaperIcon size={14} /> Patch Notes</button>
             <button data-notif-trigger className={`${styles.sidebarIconBtn} ${styles.notifGearBtn}`} onClick={handleToggleNotif} title="Notifications">
@@ -796,6 +881,23 @@ export default function App() {
               {" "}Notifications
             </button>
             <button className={styles.sidebarIconBtn} onClick={() => setSettingsOpen(true)} title="Settings"><SettingsIcon size={14} /> Settings</button>
+          </div>
+        )}
+
+        {updateReady && (
+          <button
+            className={styles.updateReadyBtn}
+            onClick={() => window.electronAPI?.installUpdate()}
+            title="Restart to install update"
+          >
+            {settings.sidebarCollapsed
+              ? <DownloadIcon size={18} />
+              : <><DownloadIcon size={13} /> Restart to update</>}
+          </button>
+        )}
+        {updateAvailable && !updateReady && (
+          <div className={`${styles.updateAvailableNote} ${settings.sidebarCollapsed ? styles.updateAvailableNoteCollapsed : ""}`}>
+            {settings.sidebarCollapsed ? <DownloadIcon size={14} /> : "Downloading update…"}
           </div>
         )}
 
@@ -1009,6 +1111,17 @@ export default function App() {
           onRemove={handleRemoveWatch}
           onCheckAll={handleCheckAllWatch}
           checking={watchChecking}
+        />
+      )}
+      {shortcutsOpen && (
+        <ShortcutsPanel
+          shortcuts={shortcuts}
+          onClose={() => setShortcutsOpen(false)}
+          onAdd={handleAddShortcut}
+          onEdit={handleEditShortcut}
+          onDelete={handleDeleteShortcut}
+          onLaunch={handleLaunchShortcut}
+          onReorder={handleReorderShortcuts}
         />
       )}
       {patchNotesOpen && <PatchNotesModal onClose={() => setPatchNotesOpen(false)} />}

@@ -20,6 +20,8 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   const [cdBusy, setCdBusy]         = useState(false);
   const [ctxPos, setCtxPos]         = useState(null);
   const [idCopied, setIdCopied]     = useState(false);
+  const [userCopied, setUserCopied] = useState(false);
+  const [passCopied, setPassCopied] = useState(false);
   const ctxRef = useRef(null);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: acc.id, disabled: !draggable });
@@ -50,7 +52,7 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
   function handleContextMenu(e) {
     e.preventDefault();
     const x = Math.min(e.clientX, window.innerWidth  - 175);
-    const y = Math.min(e.clientY, window.innerHeight - 220);
+    const y = Math.min(e.clientY, window.innerHeight - 300);
     setCtxPos({ x, y });
   }
 
@@ -78,6 +80,24 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
       setIdCopied(true);
       setTimeout(() => setIdCopied(false), 1500);
     });
+  }
+
+  function handleCopyUsername() {
+    navigator.clipboard.writeText(acc.name).then(() => {
+      setUserCopied(true);
+      setTimeout(() => { setUserCopied(false); setCtxPos(null); }, 1500);
+    });
+  }
+
+  async function handleCopyPassword() {
+    try {
+      const r    = await fetch(`/api/accounts/${acc.id}/password`);
+      const data = await r.json();
+      if (!r.ok) return;
+      await navigator.clipboard.writeText(data.password);
+      setPassCopied(true);
+      setTimeout(() => { setPassCopied(false); setCtxPos(null); }, 1500);
+    } catch {}
   }
 
   async function handleSwitch() {
@@ -234,6 +254,15 @@ export default function AccountCard({ acc, onEdit, onRefresh, onSwitch, onHistor
       {hasDropHistory && (
         <button className={styles.ctxItem} onClick={() => { setCtxPos(null); onDropHistory(); }}>
           <HistoryIcon size={16} /> Drop history
+        </button>
+      )}
+      <div className={styles.ctxDivider} />
+      <button className={styles.ctxItem} onClick={handleCopyUsername}>
+        <CopyIcon size={16} /> {userCopied ? "Copied!" : "Copy username"}
+      </button>
+      {acc.hasPassword && (
+        <button className={styles.ctxItem} onClick={handleCopyPassword}>
+          <CopyIcon size={16} /> {passCopied ? "Copied!" : "Copy password"}
         </button>
       )}
       <div className={styles.ctxDivider} />

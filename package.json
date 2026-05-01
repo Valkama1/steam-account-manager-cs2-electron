@@ -23,6 +23,7 @@
   "dependencies": {
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "steam-user": "^5.3.0",
     "uuid": "^9.0.0"
@@ -39,6 +40,11 @@
     "appId": "com.steammanager.app",
     "productName": "Steam Manager",
     "asar": false,
+    "publish": {
+      "provider": "github",
+      "owner": "Valkama1",
+      "repo": "steam-account-manager-cs2-electron"
+    },
     "directories": {
       "output": "dist-electron"
     },
@@ -60,11 +66,18 @@
       "allowToChangeInstallationDirectory": true
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility"
     },
     "deb": {
-      "depends": ["libnotify4", "libxtst6", "libnss3"]
+      "depends": [
+        "libnotify4",
+        "libxtst6",
+        "libnss3"
+      ]
     }
   }
 }

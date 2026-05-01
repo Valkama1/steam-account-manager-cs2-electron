@@ -11,6 +11,7 @@ const { readConfig, writeConfig }                                   = require(".
 const { readDB, writeDB, sanitize }                                 = require("./db.js");
 const { fetchSteamFields, fetchBanDataBatch, fetchPlayerSummariesBatch, fetchGameData, fetchCS2Stats, fetchLeetifyProfile, getSteamPath, killSteam, setSteamAutoLogin, setAutoLoginRegistry } = require("./steam.js");
 const { readWatchlist, writeWatchlist, addEntry, checkAllBans, startWatchInterval } = require("./watchlist.js");
+const { readShortcuts, writeShortcuts } = require("./shortcuts.js");
 const { readNotifications, addNotification, addPatchNoteNotification, clearAll: clearAllNotifications, clearOne: clearOneNotification } = require("./notifications.js");
 const auth = require("./auth.js");
 
@@ -345,6 +346,15 @@ app.patch("/api/accounts/:id", requireUnlocked, async (req, res) => {
   res.json(sanitize(accounts[idx]));
 });
 
+app.get("/api/accounts/:id/password", requireUnlocked, (req, res) => {
+  const account = readDB().find(a => a.id === req.params.id);
+  if (!account)          return res.status(404).json({ error: "not found" });
+  if (!account.password) return res.status(404).json({ error: "no password saved" });
+  const plain = decryptPassword(account.password);
+  if (!plain) return res.status(500).json({ error: "failed to decrypt" });
+  res.json({ password: plain });
+});
+
 app.delete("/api/accounts/:id", requireUnlocked, (req, res) => {
   const accounts = readDB();
   const filtered = accounts.filter(a => a.id !== req.params.id);
@@ -466,6 +476,85 @@ app.patch("/api/config", (req, res) => {
   const config = { ...readConfig(), ...updates };
   writeConfig(config);
   res.json(config);
+});
+
+// ── Steam shutdown ────────────────────────────────────────────────────────────
+
+app.post("/api/steam/shutdown", requireUnlocked, async (_req, res) => {
+  try {
+    const steamInfo  = await getSteamPath();
+    const wasRunning = await killSteam(steamInfo?.exe);
+    res.json({ ok: true, wasRunning });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Shortcuts ─────────────────────────────────────────────────────────────────
+
+app.get("/api/shortcuts", (_req, res) => res.json(readShortcuts()));
+
+app.post("/api/shortcuts", (req, res) => {
+  const { name, path: exePath, args } = req.body;
+  if (!name || !exePath) return res.status(400).json({ error: "name and path are required" });
+  const shortcuts = readShortcuts();
+  const entry = { id: uuidv4(), name, path: exePath, args: args || "", createdAt: new Date().toISOString() };
+  shortcuts.push(entry);
+  writeShortcuts(shortcuts);
+  res.status(201).json(entry);
+});
+
+app.patch("/api/shortcuts/:id", (req, res) => {
+  const shortcuts = readShortcuts();
+  const idx = shortcuts.findIndex(s => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "not found" });
+  const allowed = ["name", "path", "args"];
+  const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
+  shortcuts[idx] = { ...shortcuts[idx], ...updates };
+  writeShortcuts(shortcuts);
+  res.json(shortcuts[idx]);
+});
+
+app.delete("/api/shortcuts/:id", (req, res) => {
+  const shortcuts = readShortcuts();
+  const filtered  = shortcuts.filter(s => s.id !== req.params.id);
+  if (filtered.length === shortcuts.length) return res.status(404).json({ error: "not found" });
+  writeShortcuts(filtered);
+  res.json({ ok: true });
+});
+
+app.put("/api/shortcuts/order", (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "ids must be an array" });
+  const shortcuts = readShortcuts();
+  const ordered   = ids.map(id => shortcuts.find(s => s.id === id)).filter(Boolean);
+  writeShortcuts(ordered);
+  res.json({ ok: true });
+});
+
+app.post("/api/shortcuts/:id/launch", (req, res) => {
+  const shortcuts = readShortcuts();
+  const entry     = shortcuts.find(s => s.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: "not found" });
+  try {
+    if (process.platform === "win32") {
+      // Route through the Windows shell so UAC elevation and shell-execute work.
+      // The empty "" after 'start' is the required window title when the path is quoted.
+      const safePath = entry.path.replace(/"/g, "");
+      const argsStr  = entry.args ? ` ${entry.args}` : "";
+      exec(`start "" "${safePath}"${argsStr}`, (err) => {
+        if (err) console.error(`[shortcuts] launch error: ${err.message}`);
+      });
+    } else {
+      const argsArray = entry.args ? entry.args.trim().split(/\s+/) : [];
+      const child = spawn(entry.path, argsArray, { detached: true, stdio: "ignore" });
+      child.on("error", e => console.error(`[shortcuts] launch error: ${e.message}`));
+      child.unref();
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Ban watchlist ─────────────────────────────────────────────────────────────
