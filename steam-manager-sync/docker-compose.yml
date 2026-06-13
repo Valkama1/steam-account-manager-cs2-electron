@@ -1,0 +1,13 @@
+services:
+  sync:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - API_KEY=change-me
+    volumes:
+      - sync-data:/data
+    restart: unless-stopped
+
+volumes:
+  sync-data:

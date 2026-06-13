@@ -98,6 +98,7 @@ export default function App() {
   const fetchAccounts = useCallback(async () => {
     try {
       const r = await fetch(API);
+      if (!r.ok) return;
       const data = await r.json();
       setAccounts(data);
       setError(null);

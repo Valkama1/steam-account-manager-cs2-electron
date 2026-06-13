@@ -827,6 +827,129 @@ function startPatchNotesInterval() {
   console.log("[patch-notes] auto-check every 30min");
 }
 
+// ── Sync ──────────────────────────────────────────────────────────────────────
+
+// GET /api/sync/config — returns sync server settings (never exposes raw secrets in body)
+app.get("/api/sync/config", (req, res) => {
+  const { sync = {} } = readConfig();
+  res.json({
+    url:          sync.url          || "",
+    apiKey:       sync.apiKey       || "",
+    passphrase:   sync.passphrase   || "",
+    lastSyncedAt: sync.lastSyncedAt || null,
+  });
+});
+
+// PATCH /api/sync/config  { url, apiKey, passphrase }
+app.patch("/api/sync/config", (req, res) => {
+  const { url, apiKey, passphrase } = req.body;
+  const config = readConfig();
+  writeConfig({ ...config, sync: { ...(config.sync || {}), url, apiKey, passphrase } });
+  res.json({ ok: true });
+});
+
+// POST /api/sync/push — exports v2 blob and uploads to sync server
+app.post("/api/sync/push", requireUnlocked, async (_req, res) => {
+  const config = readConfig();
+  const { url, apiKey, passphrase } = config.sync || {};
+  if (!url || !apiKey || !passphrase)
+    return res.status(400).json({ error: "Sync not configured — set URL, API key, and passphrase first" });
+
+  const wrapped = auth.wrapKeyForExport(passphrase);
+  if (!wrapped.ok) return res.status(400).json({ error: wrapped.error });
+
+  const accounts = readDB().map(({ password, sharedSecret, ...rest }) => ({
+    ...rest,
+    ...(password     && { password }),
+    ...(sharedSecret && { sharedSecret }),
+  }));
+
+  const payload = {
+    version:     2,
+    exportedAt:  new Date().toISOString(),
+    exportSalt:  wrapped.exportSalt,
+    vaultKeyEnc: wrapped.vaultKeyEnc,
+    accounts,
+  };
+
+  try {
+    const r = await fetch(`${url}/sync`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body:    JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      return res.status(502).json({ error: d.error || `Sync server returned ${r.status}` });
+    }
+    const result     = await r.json();
+    const syncedAt   = result.syncedAt || new Date().toISOString();
+    const freshConfig = readConfig();
+    writeConfig({ ...freshConfig, sync: { ...(freshConfig.sync || {}), lastSyncedAt: syncedAt } });
+    res.json({ ok: true, syncedAt });
+  } catch (e) {
+    res.status(502).json({ error: `Cannot reach sync server: ${e.message}` });
+  }
+});
+
+// POST /api/sync/pull — downloads blob from sync server and merges accounts
+app.post("/api/sync/pull", requireUnlocked, async (_req, res) => {
+  const config = readConfig();
+  const { url, apiKey, passphrase } = config.sync || {};
+  if (!url || !apiKey || !passphrase)
+    return res.status(400).json({ error: "Sync not configured — set URL, API key, and passphrase first" });
+
+  let data;
+  try {
+    const r = await fetch(`${url}/sync`, { headers: { "X-API-Key": apiKey } });
+    if (!r.ok) return res.status(502).json({ error: `Sync server returned ${r.status}` });
+    data = await r.json();
+  } catch (e) {
+    return res.status(502).json({ error: `Cannot reach sync server: ${e.message}` });
+  }
+
+  if (!data.exists) return res.json({ added: 0, total: readDB().length, message: "Nothing on server yet" });
+
+  const { exportSalt, vaultKeyEnc, accounts: incoming } = data;
+
+  let exportKey;
+  try {
+    exportKey = auth.unwrapExportKey(passphrase, exportSalt, vaultKeyEnc);
+  } catch {
+    return res.status(401).json({ error: "Wrong passphrase — check your sync config" });
+  }
+
+  const currentKey = auth.getVaultKey();
+  if (!currentKey) return res.status(401).json({ error: "Vault is locked" });
+
+  const existing    = readDB();
+  const existingIds = new Set(existing.map(a => a.id));
+  let added = 0;
+
+  for (const acc of incoming) {
+    if (!acc.name) continue;
+    if (existingIds.has(acc.id)) continue;
+
+    let password = null;
+    if (acc.password && acc.password.startsWith(ENC_PREFIX)) {
+      try {
+        const plain = decryptWithKey(acc.password, exportKey);
+        password = encryptWithKey(plain, currentKey);
+      } catch {
+        password = null;
+      }
+    }
+    existing.push({ ...acc, id: acc.id || uuidv4(), password });
+    added++;
+  }
+
+  writeDB(existing);
+  const syncedAt    = new Date().toISOString();
+  const freshConfig = readConfig();
+  writeConfig({ ...freshConfig, sync: { ...(freshConfig.sync || {}), lastSyncedAt: syncedAt } });
+  res.json({ added, total: existing.length, syncedAt });
+});
+
 // ── Static (production / Electron) ───────────────────────────────────────────
 
 const clientDist = path.join(__dirname, "..", "client", "dist");

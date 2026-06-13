@@ -1,0 +1,12 @@
+{
+  "name": "steam-manager-sync",
+  "version": "1.0.0",
+  "description": "Self-hosted sync server for steam-manager",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

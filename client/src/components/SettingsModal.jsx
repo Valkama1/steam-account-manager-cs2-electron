@@ -66,10 +66,72 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
   const [totpDisableCode, setTotpDisableCode] = useState("");
   const [totpDisableErr, setTotpDisableErr]   = useState("");
 
+  // ── Sync state ───────────────────────────────────────────────────────────────
+  const [syncUrl,        setSyncUrl]        = useState("");
+  const [syncApiKey,     setSyncApiKey]     = useState("");
+  const [syncPassphrase, setSyncPassphrase] = useState("");
+  const [syncLastSynced, setSyncLastSynced] = useState(null);
+  const [syncLoading,    setSyncLoading]    = useState(null); // "push" | "pull" | null
+  const [syncStatus,     setSyncStatus]     = useState(null);
+  const [syncSaved,      setSyncSaved]      = useState(false);
+
   useEffect(() => {
     if (tab !== "security") return;
     fetch("/api/auth/status").then(r => r.json()).then(setAuthStatus).catch(() => {});
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "sync") return;
+    fetch("/api/sync/config").then(r => r.json()).then(d => {
+      setSyncUrl(d.url || "");
+      setSyncApiKey(d.apiKey || "");
+      setSyncPassphrase(d.passphrase || "");
+      setSyncLastSynced(d.lastSyncedAt || null);
+    }).catch(() => {});
+  }, [tab]);
+
+  async function handleSaveSyncConfig() {
+    await fetch("/api/sync/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: syncUrl, apiKey: syncApiKey, passphrase: syncPassphrase }),
+    });
+    setSyncSaved(true);
+    setTimeout(() => setSyncSaved(false), 2000);
+  }
+
+  async function handleSyncPush() {
+    setSyncLoading("push");
+    setSyncStatus(null);
+    try {
+      const r = await fetch("/api/sync/push", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) { setSyncStatus(`Error: ${d.error}`); return; }
+      setSyncLastSynced(d.syncedAt);
+      setSyncStatus("Push complete.");
+    } catch {
+      setSyncStatus("Push failed — cannot reach server.");
+    } finally {
+      setSyncLoading(null);
+    }
+  }
+
+  async function handleSyncPull() {
+    setSyncLoading("pull");
+    setSyncStatus(null);
+    try {
+      const r = await fetch("/api/sync/pull", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) { setSyncStatus(`Error: ${d.error}`); return; }
+      if (d.message) { setSyncStatus(d.message); return; }
+      setSyncLastSynced(d.syncedAt);
+      setSyncStatus(`Pulled — ${d.added} new account(s) added (${d.total} total).`);
+    } catch {
+      setSyncStatus("Pull failed — cannot reach server.");
+    } finally {
+      setSyncLoading(null);
+    }
+  }
 
   async function handleDisableTotp() {
     setTotpDisableErr("");
@@ -182,6 +244,7 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
           <button className={`${styles.settingsTab} ${tab === "display"   ? styles.settingsTabActive : ""}`} onClick={() => setTab("display")}>Display</button>
           <button className={`${styles.settingsTab} ${tab === "colors"    ? styles.settingsTabActive : ""}`} onClick={() => setTab("colors")}>Colors</button>
           <button className={`${styles.settingsTab} ${tab === "security"  ? styles.settingsTabActive : ""}`} onClick={() => setTab("security")}>Security</button>
+          <button className={`${styles.settingsTab} ${tab === "sync"      ? styles.settingsTabActive : ""}`} onClick={() => setTab("sync")}>Sync</button>
         </div>
 
         <div className={styles.settingsScrollBody}>
@@ -477,6 +540,110 @@ export default function SettingsModal({ settings, onChange, onClose, keyDraft, o
               ) : (
                 <p style={{ fontSize: 13, color: "var(--dim)" }}>
                   No vault configured. Restart the app to go through setup.
+                </p>
+              )}
+            </>
+          )}
+          {tab === "sync" && (
+            <>
+              <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 12, lineHeight: 1.6 }}>
+                Sync accounts to a self-hosted Docker instance so you can access them from multiple machines.
+                Passwords are always encrypted before leaving your device.
+              </p>
+
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Server URL
+                <InfoTip text="The URL of your steam-manager-sync Docker container, e.g. http://192.168.1.50:4000" />
+              </div>
+              <div className={styles.apiKeyRow}>
+                <input
+                  className={styles.apiKeyInput}
+                  value={syncUrl}
+                  onChange={e => setSyncUrl(e.target.value)}
+                  placeholder="http://192.168.1.50:4000"
+                  type="text"
+                />
+              </div>
+
+              <div className={styles.settingDivider} />
+
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                API key
+                <InfoTip text="The API_KEY you set in your docker-compose.yml." />
+              </div>
+              <div className={styles.apiKeyRow}>
+                <input
+                  className={styles.apiKeyInput}
+                  value={syncApiKey}
+                  onChange={e => setSyncApiKey(e.target.value)}
+                  placeholder="Your sync server API key"
+                  type="password"
+                />
+              </div>
+
+              <div className={styles.settingDivider} />
+
+              <div className={styles.settingRowLabel} style={{ marginBottom: 6 }}>
+                Sync passphrase
+                <InfoTip text="Encrypts your account passwords before sending to the server. Must be identical on every machine you sync from." />
+              </div>
+              <div className={styles.apiKeyRow}>
+                <input
+                  className={styles.apiKeyInput}
+                  value={syncPassphrase}
+                  onChange={e => setSyncPassphrase(e.target.value)}
+                  placeholder="Passphrase for encrypting synced data"
+                  type="password"
+                />
+              </div>
+
+              <div className={styles.settingDivider} />
+
+              <div className={styles.settingRow} style={{ cursor: "default" }}>
+                <span className={styles.settingRowLabel}>Save configuration</span>
+                <button className={styles.resetThemeBtn} onClick={handleSaveSyncConfig}>
+                  {syncSaved ? "Saved!" : "Save"}
+                </button>
+              </div>
+
+              <div className={styles.settingDivider} />
+
+              <div className={styles.settingRow} style={{ cursor: "default" }}>
+                <span className={styles.settingRowLabel}>
+                  Push to server
+                  <InfoTip text="Uploads all your accounts (encrypted) to the sync server. Overwrites any existing data on the server." />
+                </span>
+                <button
+                  className={styles.resetThemeBtn}
+                  onClick={handleSyncPush}
+                  disabled={!!syncLoading}
+                >
+                  {syncLoading === "push" ? "…" : "Push"}
+                </button>
+              </div>
+
+              <div className={styles.settingRow} style={{ cursor: "default" }}>
+                <span className={styles.settingRowLabel}>
+                  Pull from server
+                  <InfoTip text="Downloads accounts from the sync server and merges them into your local data. Accounts with the same ID are skipped." />
+                </span>
+                <button
+                  className={styles.resetThemeBtn}
+                  onClick={handleSyncPull}
+                  disabled={!!syncLoading}
+                >
+                  {syncLoading === "pull" ? "…" : "Pull"}
+                </button>
+              </div>
+
+              {syncLastSynced && (
+                <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                  Last synced: {new Date(syncLastSynced).toLocaleString()}
+                </p>
+              )}
+              {syncStatus && (
+                <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", margin: "4px 0 0" }}>
+                  {syncStatus}
                 </p>
               )}
             </>
