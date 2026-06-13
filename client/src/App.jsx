@@ -100,7 +100,7 @@ export default function App() {
       const r = await fetch(API);
       if (!r.ok) return;
       const data = await r.json();
-      setAccounts(data);
+      setAccounts(Array.isArray(data) ? data : []);
       setError(null);
     } catch {
       setError("Cannot reach server — is it running?");
